@@ -10,7 +10,7 @@ const ETHERSCAN_API_KEY = vars.get("P35YFHFMUKNMPDAVG73MIB4W53N2E91IA3");
 module.exports = {
   solidity: {
     compilers: [
-      { version: "0.8.4" },
+      { version: "0.8.8" },
       { version: "0.7.6" },
     ],
     settings: {
