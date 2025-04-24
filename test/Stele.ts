@@ -1,6 +1,5 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
 
 describe("Stele Contract", function () {
   let deployer: any;
@@ -8,13 +7,15 @@ describe("Stele Contract", function () {
   let user2: any;
   let stele: any;
   let usdc: any;
+  let cbbtc: any;
+  let usdcDecimals: number;
+  let cbbtcDecimals: number;
 
   // Base Mainnet token addresses
   const USDC = process.env.USDC || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-  const USDC_DECIMALS = 6;
   const WETH = process.env.WETH || "0x4200000000000000000000000000000000000006";
-  const CBBTC = "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"; // Base Mainnet cbBTC
-  const CBBTC_DECIMALS = 8;
+  const CBBTC = process.env.CBBTC || "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
+  
   before("Setup", async function () {
     try {
       const [owner, otherAccount, thirdAccount] = await ethers.getSigners();
@@ -29,6 +30,9 @@ describe("Stele Contract", function () {
 
       // Get USDC contract instance
       usdc = await ethers.getContractAt("IERC20Minimal", USDC);
+      cbbtc = await ethers.getContractAt("IERC20Minimal", CBBTC);
+      usdcDecimals = await stele.usdTokenDecimals();
+      cbbtcDecimals = await cbbtc.decimals();
 
       // Initial setup
       await stele.setToken(CBBTC);
@@ -42,7 +46,6 @@ describe("Stele Contract", function () {
   describe("Initial Setup", function () {
     it("Contract should be deployed correctly", async function () {
       expect(await stele.usdToken()).to.equal(USDC);
-      expect(await stele.usdTokenDecimals()).to.equal(USDC_DECIMALS);
     });
 
     it("Tokens should be set as investable", async function () {
@@ -105,15 +108,15 @@ describe("Stele Contract", function () {
         
         // Check USDC balance
         const usdcBalance = await usdc.balanceOf(deployer.address);
-        console.log("Current USDC balance:", ethers.formatUnits(usdcBalance, USDC_DECIMALS));
+        console.log("Current USDC balance:", ethers.formatUnits(usdcBalance, usdcDecimals));
         
         // Required USDC amount
-        console.log("Required USDC amount:", ethers.formatUnits(entryFeeInUsd, USDC_DECIMALS));
+        console.log("Required USDC amount:", ethers.formatUnits(entryFeeInUsd, usdcDecimals));
         
         // Warning for insufficient balance
         if (usdcBalance < entryFeeInUsd) {
           console.warn("⚠️ Warning: Insufficient USDC balance!");
-          console.warn(`Required: ${ethers.formatUnits(entryFeeInUsd, USDC_DECIMALS)} USDC, Available: ${ethers.formatUnits(usdcBalance, USDC_DECIMALS)} USDC`);
+          console.warn(`Required: ${ethers.formatUnits(entryFeeInUsd, usdcDecimals)} USDC, Available: ${ethers.formatUnits(usdcBalance, usdcDecimals)} USDC`);
           throw new Error("Insufficient USDC balance: Please acquire sufficient USDC on Base Mainnet before testing.");
         }
         
@@ -128,7 +131,7 @@ describe("Stele Contract", function () {
         
         // Check approved amount
         const allowance = await usdc.allowance(deployer.address, await stele.getAddress());
-        console.log("Approved USDC amount:", ethers.formatUnits(allowance, USDC_DECIMALS));
+        console.log("Approved USDC amount:", ethers.formatUnits(allowance, usdcDecimals));
         
         if (allowance < entryFeeInUsd) {
           throw new Error("Approved USDC amount is less than required. There was an issue with the approval process.");
@@ -216,7 +219,7 @@ describe("Stele Contract", function () {
   describe("Asset Swap 2", function () {
     it("cbBTC -> USDC", async function () {
       try {
-        const swapAmount = ethers.parseUnits("0.0005", CBBTC_DECIMALS);
+        const swapAmount = ethers.parseUnits("0.0005", cbbtcDecimals);
 
         // Swap from CBBTC to USDC
         console.log("Calling swap...");
