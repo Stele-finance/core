@@ -71,6 +71,7 @@ contract Stele {
   event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 fromPriceUSD, uint256 toPriceUSD, uint256 toAmount);
   event Register(uint256 challengeId, address user, uint256 performance);
   event Claim(uint256 challengeId, address user, uint256 rewardAmount);
+  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
   event DebugJoin(address tokenAddress, uint256 amount, uint256 totalRewards);
   event DebugTokenPrice(address baseToken, uint128 baseAmount, address quoteToken, uint256 quoteAmount);
@@ -92,6 +93,13 @@ contract Stele {
     isInvestable[WETH] = true;
     isInvestable[usdToken] = true;
     challengeCounter = 0;
+  }
+
+  // Transfer ownership of the contract to a new account
+  function transferOwnership(address newOwner) external onlyOwner {
+    require(newOwner != address(0), "NZ");
+    emit OwnershipTransferred(owner, newOwner);
+    owner = newOwner;
   }
 
   // Duration in seconds for each challenge type
