@@ -40,6 +40,7 @@ struct Challenge {
 
 contract Stele {
 
+  // Base Mainnet
   address public uniswapV3Factory = 0x33128a8fC17869897dcE68Ed026d694621f6FDfD;
   address public WETH = 0x4200000000000000000000000000000000000006;
 

@@ -1,7 +1,7 @@
 const { ethers } = require("hardhat");
 
 async function main() {
-  // Base mainnet
+  // Base Mainnet
   const usdTokenAddress = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC
   const timeLockAddress = "0xa584573413761D2CAd7d1929Ee5Fef5E983Ab3da";
   

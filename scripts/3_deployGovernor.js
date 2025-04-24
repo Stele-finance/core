@@ -5,7 +5,7 @@ async function main() {
   console.log("Deploying governance contracts with the account:", deployer.address);
   console.log("Account balance:", (await ethers.provider.getBalance(deployer.address)).toString());
 
-  // Base mainnet
+  // Base Mainnet
   const tokenAddress = "0x645c85B68b94439F9CEC4630B4b8145C7EBED0d9";
   const timeLockAddress = "0xa584573413761D2CAd7d1929Ee5Fef5E983Ab3da";
   // Governor values
