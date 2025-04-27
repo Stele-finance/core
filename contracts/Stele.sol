@@ -57,8 +57,8 @@ contract Stele {
   // Challenge repository
   mapping(uint256 => Challenge) public challenges;
   uint256 public challengeCounter;
-  // Active challenge ID by challenge type
-  mapping(ChallengeType => uint256) public activeChallengesByType;
+  // Latest challenge ID by challenge type
+  mapping(ChallengeType => uint256) public latestChallengesByType;
   
   // Event definitions
   event RewardRatio(uint256[5] newRewardDistribution);
@@ -189,13 +189,19 @@ contract Stele {
 
   // Create a new challenge
   function createChallenge(ChallengeType challengeType) external {
-    uint256 activeChallengeId = activeChallengesByType[challengeType];
-    Challenge storage latestChallenge = challenges[activeChallengeId];
-    require(block.timestamp > latestChallenge.endTime, "NE");
+    uint256 latestChallengeId = latestChallengesByType[challengeType];
+    // Only allow creating a new challenge if it's the first challenge or the previous challenge has ended
+    if (latestChallengeId != 0) {
+      Challenge storage latestChallenge = challenges[latestChallengeId];
+      require(block.timestamp > latestChallenge.endTime, "NE");
+    }
 
-    uint256 challengeId = challengeCounter;
     challengeCounter++;
-    
+    uint256 challengeId = challengeCounter;
+
+    // Update latest challenge for this type
+    latestChallengesByType[challengeType] = challengeId;
+
     Challenge storage challenge = challenges[challengeId];
     challenge.id = challengeId;
     challenge.challengeType = challengeType;
@@ -214,9 +220,6 @@ contract Stele {
       challenge.topUsers[i] = address(0);
       challenge.userTotalValues[i] = 0;
     }
-    
-    // Update active challenge for this type
-    activeChallengesByType[challengeType] = challengeId;
     
     emit Create(challengeId, challengeType, challenge.startTime, challenge.endTime);
   }

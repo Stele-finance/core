@@ -46,7 +46,7 @@ interface IStele {
         uint256 _entryFee
     );
     function challengeCounter() external view returns (uint256);
-    function activeChallengesByType(ChallengeType challengeType) external view returns (uint256);
+    function latestChallengesByType(ChallengeType challengeType) external view returns (uint256);
     
     // Governance functions (onlyOwner)
     function setUSDToken(address _usdToken) external;

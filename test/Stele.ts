@@ -1,6 +1,9 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 
+// Challenge type definition
+enum ChallengeType { OneWeek, OneMonth, ThreeMonths, SixMonths, OneYear }
+
 describe("Stele Contract", function () {
   let deployer: any;
   let user1: any;
@@ -56,20 +59,19 @@ describe("Stele Contract", function () {
     });
   });
 
-  describe("Challenge Creation", function () {
+  describe("Challenge Creation - 1 week", function () {
     it("Challenge should be created successfully", async function () {
-      const challengeType = 0; // OneWeek
-      await stele.createChallenge(challengeType);
-      
-      const challenge = await stele.challenges(0);
-      expect(challenge.challengeType).to.equal(challengeType);
+      await stele.createChallenge(ChallengeType.OneWeek);
+      const latestChallengeId = await stele.latestChallengesByType(ChallengeType.OneWeek);
+      const challenge = await stele.challenges(latestChallengeId);
+      expect(challenge.challengeType).to.equal(ChallengeType.OneWeek);
       expect(challenge.startTime).to.be.gt(0);
       expect(challenge.endTime).to.be.gt(challenge.startTime);
     });
   });
 
   describe("Challenge Participation", function () {
-    it("User should be able to join a challenge", async function () {
+    it("User should be able to join a challenge - 1 week", async function () {
       try {
         const entryFee = await stele.entryFee();
         const usdTokenDecimals = await stele.usdTokenDecimals();
@@ -138,7 +140,8 @@ describe("Stele Contract", function () {
         }
 
         console.log("Calling joinChallenge...");
-        const joinTx = await stele.joinChallenge(0);        
+        const latestChallengeId = await stele.latestChallengesByType(ChallengeType.OneWeek);  
+        const joinTx = await stele.joinChallenge(latestChallengeId);        
         const joinReceipt = await joinTx.wait();
         
         // Extract information from events
@@ -183,8 +186,9 @@ describe("Stele Contract", function () {
         console.log("From:", USDC);
         console.log("To:", CBBTC);
         console.log("Amount:", swapAmount.toString());
-        
-        const swapTx = await stele.swap(0, USDC, CBBTC, swapAmount);
+     
+        const latestChallengeId = await stele.latestChallengesByType(ChallengeType.OneWeek);
+        const swapTx = await stele.swap(latestChallengeId, USDC, CBBTC, swapAmount);
         const swapReceipt = await swapTx.wait();
         console.log("Swap transaction completed:", swapReceipt.hash);
         
@@ -227,7 +231,8 @@ describe("Stele Contract", function () {
         console.log("To:", USDC);
         console.log("Amount:", swapAmount.toString());
         
-        const swapTx = await stele.swap(0, CBBTC, USDC, swapAmount);
+        const latestChallengeId = await stele.latestChallengesByType(ChallengeType.OneWeek);
+        const swapTx = await stele.swap(latestChallengeId, CBBTC, USDC, swapAmount);
         const swapReceipt = await swapTx.wait();
         console.log("Swap transaction completed:", swapReceipt.hash);
         
@@ -256,6 +261,18 @@ describe("Stele Contract", function () {
         console.error("Swap test error:", error);
         throw error;
       }
+    });
+  });
+
+
+  describe("Challenge Creation - 1 month", function () {
+    it("Challenge should be created successfully", async function () {
+      await stele.createChallenge(ChallengeType.OneMonth);
+      const latestChallengeId = await stele.latestChallengesByType(ChallengeType.OneMonth);
+      const challenge = await stele.challenges(latestChallengeId);
+      expect(challenge.challengeType).to.equal(ChallengeType.OneMonth);
+      expect(challenge.startTime).to.be.gt(0);
+      expect(challenge.endTime).to.be.gt(challenge.startTime);
     });
   });
 
