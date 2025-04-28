@@ -78,8 +78,8 @@ describe("Stele Contract", function () {
         
         // Calculate entry fee
         const entryFeeInUsd = ethers.parseUnits(entryFee.toString(), usdTokenDecimals) / 100n;
-        const entryFeeInUsd2 = ethers.formatUnits(entryFeeInUsd, usdTokenDecimals);
-        console.log("Entry Fee in USD:", entryFeeInUsd2); // $0.1
+        const formatedFee = ethers.formatUnits(entryFeeInUsd, usdTokenDecimals);
+        console.log("Entry Fee in USD:", formatedFee); // $0.1
         
         console.log("Calling getTokenPrice...");
         const ethPriceTx = await stele.getTokenPrice(WETH, ethers.parseEther("1"), USDC);        
