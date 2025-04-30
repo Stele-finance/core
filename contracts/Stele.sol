@@ -19,7 +19,7 @@ struct Asset {
 struct UserPortfolio {
   Asset[] assets;
 }
-
+// TODO : arrange
 struct Challenge {
   uint256 id;
   ChallengeType challengeType;
@@ -33,7 +33,7 @@ struct Challenge {
   address creator;
   uint256 entryFee;
   address[10] topUsers; // 상위 10명의 주소
-  uint256[10] userTotalValues; // 각 상위 참가자의 수익율
+  uint256[10] score; // 각 상위 참가자의 수익율
   mapping(address => UserPortfolio) portfolios;
   mapping(address => bool) isClosed;
 }
@@ -218,7 +218,7 @@ contract Stele {
     // Initialize top users and their values
     for (uint i = 0; i < 10; i++) {
       challenge.topUsers[i] = address(0);
-      challenge.userTotalValues[i] = 0;
+      challenge.score[i] = 0;
     }
     
     emit Create(challengeId, challengeType, challenge.startTime, challenge.endTime);
@@ -364,27 +364,27 @@ contract Stele {
     require(!challenge.isClosed[msg.sender], "C");
     
     // Calculate total portfolio value USD
-    uint256 totalValueUSD = 0;
+    uint256 userScore = 0;
     
     UserPortfolio storage portfolio = challenge.portfolios[msg.sender];
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
       uint8 _tokenDecimals = IERC20Minimal(portfolio.assets[i].tokenAddress).decimals();
       uint256 assetPriceUSD = getTokenPrice(portfolio.assets[i].tokenAddress, uint128(1 * 10 ** _tokenDecimals), challenge.usdToken);
       uint256 assetValueUSD = (portfolio.assets[i].amount / 10 ** _tokenDecimals) * assetPriceUSD;
-      totalValueUSD += assetValueUSD;
+      userScore += assetValueUSD;
     }
     
     // Update ranking
-    updateRanking(challengeId, msg.sender, totalValueUSD);
+    updateRanking(challengeId, msg.sender, userScore);
     
     // Mark position as closed
     challenge.isClosed[msg.sender] = true;
     
-    emit Register(challengeId, msg.sender, totalValueUSD);
+    emit Register(challengeId, msg.sender, userScore);
   }
 
   // Helper function to update top performers
-  function updateRanking(uint256 challengeId, address user, uint256 totalValueUSD) internal {
+  function updateRanking(uint256 challengeId, address user, uint256 userScore) internal {
     Challenge storage challenge = challenges[challengeId];
     
     // Check if user is already in top performers
@@ -401,35 +401,35 @@ contract Stele {
     
     if (isAlreadyTop) {
       // Update existing entry
-      challenge.userTotalValues[existingIndex] = totalValueUSD;
+      challenge.score[existingIndex] = userScore;
       
       // Re-sort if needed
       for (uint256 i = existingIndex; i > 0; i--) {
-        if (challenge.userTotalValues[i] > challenge.userTotalValues[i-1]) {
+        if (challenge.score[i] > challenge.score[i-1]) {
           // Swap positions
           (challenge.topUsers[i], challenge.topUsers[i-1]) = 
               (challenge.topUsers[i-1], challenge.topUsers[i]);
-          (challenge.userTotalValues[i], challenge.userTotalValues[i-1]) = 
-              (challenge.userTotalValues[i-1], challenge.userTotalValues[i]);
+          (challenge.score[i], challenge.score[i-1]) = 
+              (challenge.score[i-1], challenge.score[i]);
         } else {
           break;
         }
       }
     } else {
       // Check if totalValue is higher than the lowest in top 10
-      if (challenge.topUsers[9] == address(0) || totalValueUSD > challenge.userTotalValues[9]) {
+      if (challenge.topUsers[9] == address(0) || userScore > challenge.score[9]) {
         // Replace the last entry
         challenge.topUsers[9] = user;
-        challenge.userTotalValues[9] = totalValueUSD;
+        challenge.score[9] = userScore;
         
         // Bubble up to correct position
         for (uint256 i = 9; i > 0; i--) {
-          if (challenge.userTotalValues[i] > challenge.userTotalValues[i-1]) {
+          if (challenge.score[i] > challenge.score[i-1]) {
             // Swap positions
             (challenge.topUsers[i], challenge.topUsers[i-1]) = 
                 (challenge.topUsers[i-1], challenge.topUsers[i]);
-            (challenge.userTotalValues[i], challenge.userTotalValues[i-1]) = 
-                (challenge.userTotalValues[i-1], challenge.userTotalValues[i]);
+            (challenge.score[i], challenge.score[i-1]) = 
+                (challenge.score[i-1], challenge.score[i]);
           } else {
             break;
           }
