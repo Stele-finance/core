@@ -81,8 +81,7 @@ describe("Stele Contract", function () {
       expect(steleCreatedEvent.maxAssets).to.equal(10);
       expect(steleCreatedEvent.seedMoney).to.equal(1000);
       expect(steleCreatedEvent.entryFee).to.equal(10);
-      expect(steleCreatedEvent.rewardDistribution).to.deep.equal([50, 26, 13, 7, 4]);
-      expect(steleCreatedEvent.challengeCounter).to.equal(0);
+      expect(steleCreatedEvent.rewardRatio).to.deep.equal([50, 26, 13, 7, 4]);
     });
 
     it("Tokens should be set as investable", async function () {

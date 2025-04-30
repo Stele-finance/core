@@ -27,13 +27,9 @@ struct Challenge {
   uint256 endTime;
   uint256 totalRewards; // USD Token
   uint256 seedMoney;
-  address usdToken;
-  uint8 usdTokenDecimals;
-  uint8 maxAssets;
-  address creator;
   uint256 entryFee;
-  address[10] topUsers; // 상위 10명의 주소
-  uint256[10] score; // 각 상위 참가자의 수익율
+  address[10] topUsers; // top 10 users
+  uint256[10] score; // score of top 10 users
   mapping(address => UserPortfolio) portfolios;
   mapping(address => bool) isClosed;
 }
@@ -51,7 +47,7 @@ contract Stele {
   uint8 public maxAssets;
   uint256 public seedMoney;
   uint256 public entryFee;
-  uint256[5] public rewardDistribution;
+  uint256[5] public rewardRatio;
   mapping(address => bool) public isInvestable;
 
   // Challenge repository
@@ -61,19 +57,19 @@ contract Stele {
   mapping(ChallengeType => uint256) public latestChallengesByType;
   
   // Event definitions
-  event RewardRatio(uint256[5] newRewardDistribution);
+  event SteleCreated(address owner,address usdToken, uint8 maxAssets, uint256 seedMoney, uint256 entryFee, uint256[5] rewardRatio);
+  event RewardRatio(uint256[5] newRewardRatio);
   event EntryFee(uint256 newEntryFee);
   event MaxAssets(uint8 newMaxAssets);
   event SeedMoney(uint256 newSeedMoney);
   event AddToken(address tokenAddress);
   event RemoveToken(address tokenAddress);
-  event Create(uint256 challengeId, ChallengeType challengeType, uint256 startTime, uint256 endTime);
+  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee);
   event Join(uint256 challengeId, address user);
-  event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 fromPriceUSD, uint256 toPriceUSD, uint256 toAmount);
+  event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 toAmount);
   event Register(uint256 challengeId, address user, uint256 performance);
-  event Claim(uint256 challengeId, address user, uint256 rewardAmount);
+  event Reward(uint256 challengeId, address user, uint256 rewardAmount);
   event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-  event SteleCreated(address usdToken, uint8 maxAssets, uint256 seedMoney, uint256 entryFee, uint256[5] rewardDistribution, uint256 challengeCounter);
 
   event DebugJoin(address tokenAddress, uint256 amount, uint256 totalRewards);
   event DebugTokenPrice(address baseToken, uint128 baseAmount, address quoteToken, uint256 quoteAmount);
@@ -91,12 +87,12 @@ contract Stele {
     maxAssets = 10;
     seedMoney = 1000; // $1000 (ex. 1000 USDC token)
     entryFee = 10; // $10 (ex. 10 USDC token)
-    rewardDistribution = [50, 26, 13, 7, 4];
+    rewardRatio = [50, 26, 13, 7, 4];
     isInvestable[WETH] = true;
     isInvestable[usdToken] = true;
     challengeCounter = 0;
 
-    emit SteleCreated(usdToken, maxAssets, seedMoney, entryFee, rewardDistribution, challengeCounter);
+    emit SteleCreated(owner, usdToken, maxAssets, seedMoney, entryFee, rewardRatio);
   }
 
   // Transfer ownership of the contract to a new account
@@ -124,16 +120,16 @@ contract Stele {
   }
 
   // Reward distribution ratio setting function
-  function setRewardRatio(uint256[5] calldata _rewardDistribution) external onlyOwner {
+  function setRewardRatio(uint256[5] calldata _rewardRatio) external onlyOwner {
     uint256 sum = 0;
     for (uint i = 0; i < 5; i++) {
-        require(_rewardDistribution[i] > 0, "IR");
-        sum += _rewardDistribution[i];
+        require(_rewardRatio[i] > 0, "IR");
+        sum += _rewardRatio[i];
     }
     require(sum == 100, "IS");
     
-    rewardDistribution = _rewardDistribution;
-    emit RewardRatio(_rewardDistribution);
+    rewardRatio = _rewardRatio;
+    emit RewardRatio(_rewardRatio);
   }
   
   // Entry fee setting function
@@ -212,10 +208,6 @@ contract Stele {
     challenge.endTime = block.timestamp + getDuration(challengeType);
     challenge.totalRewards = 0;
     challenge.seedMoney = seedMoney;
-    challenge.usdToken = usdToken;
-    challenge.usdTokenDecimals = usdTokenDecimals;
-    challenge.maxAssets = maxAssets;
-    challenge.creator = msg.sender;
     challenge.entryFee = entryFee;
     
     // Initialize top users and their values
@@ -224,7 +216,7 @@ contract Stele {
       challenge.score[i] = 0;
     }
     
-    emit Create(challengeId, challengeType, challenge.startTime, challenge.endTime);
+    emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee);
   }
 
   // Join an existing challenge
@@ -240,13 +232,13 @@ contract Stele {
     require(challenge.portfolios[msg.sender].assets.length == 0, "AJ");
     
     // Calculate entry fee (USD token)
-    uint256 entryFeeUSD = challenge.entryFee * 10 ** challenge.usdTokenDecimals; // Convert to token decimals
+    uint256 entryFeeUSD = challenge.entryFee * 10 ** usdTokenDecimals; // Convert to token decimals
     // TODO : test
     entryFeeUSD = entryFeeUSD / 100;
     //entryFeeUSD = entryFeeUSD;
 
     // Transfer USD token to contract
-    IERC20Minimal usdTokenContract = IERC20Minimal(challenge.usdToken);
+    IERC20Minimal usdTokenContract = IERC20Minimal(usdToken);
     
     // First check if user has enough tokens
     require(usdTokenContract.balanceOf(msg.sender) >= entryFeeUSD, "NEB");
@@ -263,8 +255,8 @@ contract Stele {
     
     // Initialize with seed money in USD
     Asset memory initialAsset = Asset({
-      tokenAddress: challenge.usdToken,
-      amount: challenge.seedMoney * 10 ** challenge.usdTokenDecimals
+      tokenAddress: usdToken,
+      amount: challenge.seedMoney * 10 ** usdTokenDecimals
     });
     
     portfolio.assets.push(initialAsset);
@@ -311,8 +303,8 @@ contract Stele {
     uint8 fromTokenDecimals = IERC20Minimal(from).decimals();
     uint8 toTokenDecimals = IERC20Minimal(to).decimals();
 
-    uint256 fromPriceUSD = getTokenPrice(from, uint128(1 * 10 ** fromTokenDecimals), challenge.usdToken);
-    uint256 toPriceUSD = getTokenPrice(to, uint128(1 * 10 ** toTokenDecimals), challenge.usdToken);
+    uint256 fromPriceUSD = getTokenPrice(from, uint128(1 * 10 ** fromTokenDecimals), usdToken);
+    uint256 toPriceUSD = getTokenPrice(to, uint128(1 * 10 ** toTokenDecimals), usdToken);
     
     require(amount * fromPriceUSD >= toPriceUSD);
     
@@ -341,7 +333,7 @@ contract Stele {
     }
     
     if (!foundTarget) {
-      require(portfolio.assets.length < challenge.maxAssets, "FA");
+      require(portfolio.assets.length < maxAssets, "FA");
       portfolio.assets.push(Asset({
         tokenAddress: to,
         amount: toAmount
@@ -354,7 +346,7 @@ contract Stele {
       portfolio.assets.pop();
     }
 
-    emit Swap(challengeId, msg.sender, from, to, amount, fromPriceUSD, toPriceUSD, toAmount);
+    emit Swap(challengeId, msg.sender, from, to, amount, toAmount);
   }
 
   // Register final performance and close position
@@ -372,7 +364,7 @@ contract Stele {
     UserPortfolio storage portfolio = challenge.portfolios[msg.sender];
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
       uint8 _tokenDecimals = IERC20Minimal(portfolio.assets[i].tokenAddress).decimals();
-      uint256 assetPriceUSD = getTokenPrice(portfolio.assets[i].tokenAddress, uint128(1 * 10 ** _tokenDecimals), challenge.usdToken);
+      uint256 assetPriceUSD = getTokenPrice(portfolio.assets[i].tokenAddress, uint128(1 * 10 ** _tokenDecimals), usdToken);
       uint256 assetValueUSD = (portfolio.assets[i].amount / 10 ** _tokenDecimals) * assetPriceUSD;
       userScore += assetValueUSD;
     }
@@ -451,7 +443,7 @@ contract Stele {
     
     // Rewards distribution to top 5 participants
     uint256 undistributed = challenge.totalRewards;
-    IERC20Minimal usdTokenContract = IERC20Minimal(challenge.usdToken);
+    IERC20Minimal usdTokenContract = IERC20Minimal(usdToken);
     
     // Check USD token balance of the contract
     uint256 balance = usdTokenContract.balanceOf(address(this));
@@ -467,8 +459,8 @@ contract Stele {
       address userAddress = challenge.topUsers[i];
       if (userAddress != address(0)) {
         validRankers[actualRankerCount] = userAddress;
-        initialRewards[actualRankerCount] = rewardDistribution[i];
-        totalInitialRewardWeight += rewardDistribution[i];
+        initialRewards[actualRankerCount] = rewardRatio[i];
+        totalInitialRewardWeight += rewardRatio[i];
         actualRankerCount++;
       }
     }
@@ -494,7 +486,7 @@ contract Stele {
           
           undistributed -= rewardAmount;
 
-          emit Claim(challengeId, userAddress, rewardAmount);
+          emit Reward(challengeId, userAddress, rewardAmount);
         }
       }
     }
