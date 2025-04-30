@@ -73,6 +73,7 @@ contract Stele {
   event Register(uint256 challengeId, address user, uint256 performance);
   event Claim(uint256 challengeId, address user, uint256 rewardAmount);
   event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+  event SteleCreated(address usdToken, uint8 maxAssets, uint256 seedMoney, uint256 entryFee, uint256[5] rewardDistribution, uint256 challengeCounter);
 
   event DebugJoin(address tokenAddress, uint256 amount, uint256 totalRewards);
   event DebugTokenPrice(address baseToken, uint128 baseAmount, address quoteToken, uint256 quoteAmount);
@@ -94,6 +95,8 @@ contract Stele {
     isInvestable[WETH] = true;
     isInvestable[usdToken] = true;
     challengeCounter = 0;
+
+    emit SteleCreated(usdToken, maxAssets, seedMoney, entryFee, rewardDistribution, challengeCounter);
   }
 
   // Transfer ownership of the contract to a new account

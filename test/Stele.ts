@@ -51,6 +51,40 @@ describe("Stele Contract", function () {
       expect(await stele.usdToken()).to.equal(USDC);
     });
 
+    it("Should emit SteleCreated event with correct parameters", async function () {
+      const Stele = await ethers.getContractFactory("Stele");
+      const stele = await Stele.deploy(USDC);
+      const deployment = await stele.waitForDeployment();
+      
+      const receipt = await deployment.deploymentTransaction()?.wait();
+      
+      // Extract SteleCreated event from deployment transaction
+      let steleCreatedEvent;
+      for (const log of receipt?.logs || []) {
+        try {
+          const parsedLog = stele.interface.parseLog(log);
+          if (parsedLog && parsedLog.name === 'SteleCreated') {
+            steleCreatedEvent = parsedLog.args;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      // Ensure event was found
+      if (!steleCreatedEvent) {
+        throw new Error("SteleCreated event not found in deployment transaction");
+      }
+
+      expect(steleCreatedEvent.usdToken).to.equal(USDC);
+      expect(steleCreatedEvent.maxAssets).to.equal(10);
+      expect(steleCreatedEvent.seedMoney).to.equal(1000);
+      expect(steleCreatedEvent.entryFee).to.equal(10);
+      expect(steleCreatedEvent.rewardDistribution).to.deep.equal([50, 26, 13, 7, 4]);
+      expect(steleCreatedEvent.challengeCounter).to.equal(0);
+    });
+
     it("Tokens should be set as investable", async function () {
       await stele.setToken(CBBTC);
       await stele.setToken(WETH);
