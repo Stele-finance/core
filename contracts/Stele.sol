@@ -19,7 +19,7 @@ struct Asset {
 struct UserPortfolio {
   Asset[] assets;
 }
-// TODO : arrange
+
 struct Challenge {
   uint256 id;
   ChallengeType challengeType;
@@ -65,7 +65,7 @@ contract Stele {
   event AddToken(address tokenAddress);
   event RemoveToken(address tokenAddress);
   event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee);
-  event Join(uint256 challengeId, address user);
+  event Join(uint256 challengeId, address user, uint256 seedMoney);
   event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 toAmount);
   event Register(uint256 challengeId, address user, uint256 performance);
   event Reward(uint256 challengeId, address user, uint256 rewardAmount);
@@ -154,6 +154,25 @@ contract Stele {
   function resetToken(address tokenAddress) external onlyOwner {
     isInvestable[tokenAddress] = false;
     emit RemoveToken(tokenAddress);
+  }
+
+  // Get user's portfolio in a specific challenge
+  function getUserPortfolio(uint256 challengeId, address user) external view returns (address[] memory tokenAddresses, uint256[] memory amounts) {
+    Challenge storage challenge = challenges[challengeId];
+    require(challenge.startTime > 0, "CNE");
+    
+    UserPortfolio storage portfolio = challenge.portfolios[user];
+    uint256 assetCount = portfolio.assets.length;
+    
+    tokenAddresses = new address[](assetCount);
+    amounts = new uint256[](assetCount);
+    
+    for (uint256 i = 0; i < assetCount; i++) {
+      tokenAddresses[i] = portfolio.assets[i].tokenAddress;
+      amounts[i] = portfolio.assets[i].amount;
+    }
+    
+    return (tokenAddresses, amounts);
   }
 
   // Token price query function using Uniswap V3 pool
@@ -265,7 +284,7 @@ contract Stele {
     challenge.totalRewards += entryFeeUSD;
     
     emit DebugJoin(portfolio.assets[0].tokenAddress, portfolio.assets[0].amount, challenge.totalRewards);
-    emit Join(challengeId, msg.sender);
+    emit Join(challengeId, msg.sender, challenge.seedMoney);
   }
 
   // Swap assets within a challenge portfolio

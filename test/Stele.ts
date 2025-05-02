@@ -236,8 +236,6 @@ describe("Stele Contract", function () {
               console.log("  From Asset:", parsedLog.args.fromAsset);
               console.log("  To Asset:", parsedLog.args.toAsset);
               console.log("  From Amount:", parsedLog.args.fromAmount.toString());
-              console.log("  fromPriceUSD:", parsedLog.args.fromPriceUSD.toString());
-              console.log("  toPriceUSD:", parsedLog.args.toPriceUSD.toString());
               console.log("  To Amount:", parsedLog.args.toAmount.toString());
               break;
             }
@@ -280,8 +278,6 @@ describe("Stele Contract", function () {
               console.log("  From Asset:", parsedLog.args.fromAsset);
               console.log("  To Asset:", parsedLog.args.toAsset);
               console.log("  From Amount:", parsedLog.args.fromAmount.toString());
-              console.log("  fromPriceUSD:", parsedLog.args.fromPriceUSD.toString());
-              console.log("  toPriceUSD:", parsedLog.args.toPriceUSD.toString());
               console.log("  To Amount:", parsedLog.args.toAmount.toString());
               break;
             }
@@ -290,6 +286,12 @@ describe("Stele Contract", function () {
             continue;
           }
         }
+
+        // Get portfolio data
+        const [tokenAddresses, amounts] = await stele.getUserPortfolio(latestChallengeId, deployer.address);
+        console.log("Portfolio data:");
+        console.log("  Token Addresses:", tokenAddresses);
+        console.log("  Amounts:", amounts);
       } catch (error) {
         console.error("Swap test error:", error);
         throw error;
@@ -308,6 +310,7 @@ describe("Stele Contract", function () {
       expect(challenge.endTime).to.be.gt(challenge.startTime);
     });
   });
+
 
   // describe("Challenge End and Rewards", function () {
   //   it("User should be able to receive rewards after challenge ends", async function () {

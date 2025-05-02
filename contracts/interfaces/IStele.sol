@@ -15,7 +15,7 @@ interface IStele {
   event AddToken(address tokenAddress);
   event RemoveToken(address tokenAddress);
   event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee);
-  event Join(uint256 challengeId, address user);
+  event Join(uint256 challengeId, address user, uint256 seedMoney);
   event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 toAmount);
   event Register(uint256 challengeId, address user, uint256 performance);
   event Reward(uint256 challengeId, address user, uint256 rewardAmount);
@@ -65,6 +65,9 @@ interface IStele {
   
   // Reward function (onlyOwner)
   function getRewards(uint256 challengeId) external;
+
+  function getUserPortfolio(uint256 challengeId, address user) external view returns (address[] memory tokenAddresses, uint256[] memory amounts);
+
   //TODO : remove for production
   // Price function
   function getTokenPrice(address baseToken, uint128 baseAmount, address quoteToken) external returns (uint256);
