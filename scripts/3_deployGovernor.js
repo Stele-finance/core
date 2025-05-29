@@ -6,11 +6,12 @@ async function main() {
   console.log("Account balance:", (await ethers.provider.getBalance(deployer.address)).toString());
 
   // Base Mainnet
-  const tokenAddress = "0x2Bc1B6746ED3EAf8A30d9dB844091Ad3D6598528";
-  const timeLockAddress = "0xB32B22F3875d1E9953F8dC2cAb2785bD8391eAbb";
+  const tokenAddress = "0xb6BD6d9eab784c49A4FDA68a4cd24228B37BAD40";
+  const timeLockAddress = "0xbA7117E9634aEAEf10166f67eB421BB099e79112";
   // Governor values
   const QUORUM_PERCENTAGE = 4; // 4%
-  const VOTING_PERIOD = 45818; // 1 week
+  //const VOTING_PERIOD = 45818; // 1 week
+  const VOTING_PERIOD = 500;
   const VOTING_DELAY = 1; // 1 block
 
   // Deploy Governor
