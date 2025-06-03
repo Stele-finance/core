@@ -474,7 +474,7 @@ contract Stele {
     
     // Check USD token balance of the contract
     uint256 balance = usdTokenContract.balanceOf(address(this));
-    require(balance > undistributed, "NBR");
+    require(balance >= undistributed, "NBR");
     
     // Calculate actual ranker count and initial rewards
     uint8 actualRankerCount = 0;
