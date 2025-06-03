@@ -68,6 +68,24 @@ interface IStele {
 
   function getUserPortfolio(uint256 challengeId, address user) external view returns (address[] memory tokenAddresses, uint256[] memory amounts);
 
+  // Ranking function
+  function getRanking(uint256 challengeId) external view returns (address[10] memory topUsers, uint256[10] memory scores);
+  
+  // Get specific user's rank and score
+  function getUserRank(uint256 challengeId, address user) external view returns (uint256 rank, uint256 score);
+  
+  // Get challenge information
+  function getChallengeInfo(uint256 challengeId) external view returns (
+    uint256 id,
+    ChallengeType challengeType,
+    uint256 startTime,
+    uint256 endTime,
+    uint256 totalRewards,
+    uint256 seedMoney,
+    uint256 entryFee,
+    bool isActive
+  );
+
   //TODO : remove for production
   // Price function
   function getTokenPrice(address baseToken, uint128 baseAmount, address quoteToken) external returns (uint256);

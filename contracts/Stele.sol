@@ -451,6 +451,14 @@ contract Stele {
       }
     }
   }
+  
+  function getRanking(uint256 challengeId) external view returns (address[10] memory topUsers, uint256[10] memory scores) {
+    Challenge storage challenge = challenges[challengeId];
+    for (uint256 i = 0; i < 10; i++) {
+      topUsers[i] = challenge.topUsers[i];
+      scores[i] = challenge.score[i];
+    }
+  }
 
   // Claim rewards after challenge ends
   function getRewards(uint256 challengeId) external onlyOwner {
