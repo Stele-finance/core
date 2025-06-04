@@ -6,7 +6,6 @@ import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol';
 import './interfaces/IERC20Minimal.sol';
-import "hardhat/console.sol";
 
 // Challenge type definition
 enum ChallengeType { OneWeek, OneMonth, ThreeMonths, SixMonths, OneYear }
@@ -249,9 +248,9 @@ contract Stele {
     require(challenge.portfolios[msg.sender].assets.length == 0, "AJ");
     
     // Calculate entry fee (USD token)
-    uint256 entryFeeUSD = challenge.entryFee * 10 ** usdTokenDecimals; // Convert to token decimals
+    uint256 entryFeeUSD = safeMul(challenge.entryFee, 10 ** usdTokenDecimals); // Convert to token decimals
     // TODO : test
-    entryFeeUSD = entryFeeUSD / 100;
+    entryFeeUSD = safeDiv(entryFeeUSD, 100);
     //entryFeeUSD = entryFeeUSD;
 
     // Transfer USD token to contract
@@ -273,13 +272,13 @@ contract Stele {
     // Initialize with seed money in USD
     Asset memory initialAsset = Asset({
       tokenAddress: usdToken,
-      amount: challenge.seedMoney * 10 ** usdTokenDecimals
+      amount: safeMul(challenge.seedMoney, 10 ** usdTokenDecimals)
     });
     
     portfolio.assets.push(initialAsset);
     
     // Update challenge total rewards
-    challenge.totalRewards += entryFeeUSD;
+    challenge.totalRewards = safeAdd(challenge.totalRewards, entryFeeUSD);
     
     emit Join(challengeId, msg.sender, challenge.seedMoney);
   }
@@ -322,27 +321,31 @@ contract Stele {
     uint256 fromPriceUSD = getTokenPrice(from, uint128(1 * 10 ** fromTokenDecimals), usdToken);
     uint256 toPriceUSD = getTokenPrice(to, uint128(1 * 10 ** toTokenDecimals), usdToken);
     
-    require(amount * fromPriceUSD >= toPriceUSD);
+    require(safeMul(amount, fromPriceUSD) >= toPriceUSD);
     
     // Calculate swap amount with decimal adjustment
     uint256 toAmount;
     if (toTokenDecimals >= fromTokenDecimals) {
         // When to token has larger decimals (e.g., USDC(6) -> BTC(8))
-        toAmount = amount * fromPriceUSD * (10 ** (toTokenDecimals - fromTokenDecimals)) / toPriceUSD;
+        uint256 temp1 = safeMul(amount, fromPriceUSD);
+        uint256 temp2 = safeMul(temp1, 10 ** (toTokenDecimals - fromTokenDecimals));
+        toAmount = safeDiv(temp2, toPriceUSD);
     } else {
         // When from token has larger decimals (e.g., BTC(8) -> USDC(6))
-        toAmount = amount * fromPriceUSD / (10 ** (fromTokenDecimals - toTokenDecimals)) / toPriceUSD;
+        uint256 temp1 = safeMul(amount, fromPriceUSD);
+        uint256 temp2 = safeDiv(temp1, 10 ** (fromTokenDecimals - toTokenDecimals));
+        toAmount = safeDiv(temp2, toPriceUSD);
     }
     
     // Update source asset
-    portfolio.assets[index].amount -= amount;
+    portfolio.assets[index].amount = safeSub(portfolio.assets[index].amount, amount);
     
     // Add or update target asset
     bool foundTarget = false;
 
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
       if (portfolio.assets[i].tokenAddress == to) {
-        portfolio.assets[i].amount += toAmount;
+        portfolio.assets[i].amount = safeAdd(portfolio.assets[i].amount, toAmount);
         foundTarget = true;
         break;
       }
@@ -381,8 +384,8 @@ contract Stele {
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
       uint8 _tokenDecimals = IERC20Minimal(portfolio.assets[i].tokenAddress).decimals();
       uint256 assetPriceUSD = getTokenPrice(portfolio.assets[i].tokenAddress, uint128(1 * 10 ** _tokenDecimals), usdToken);
-      uint256 assetValueUSD = (portfolio.assets[i].amount / 10 ** _tokenDecimals) * assetPriceUSD;
-      userScore += assetValueUSD;
+      uint256 assetValueUSD = safeMul(safeDiv(portfolio.assets[i].amount, 10 ** _tokenDecimals), assetPriceUSD);
+      userScore = safeAdd(userScore, assetValueUSD);
     }
     
     // Update ranking
@@ -495,7 +498,7 @@ contract Stele {
       if (userAddress != address(0)) {
         validRankers[actualRankerCount] = userAddress;
         initialRewards[actualRankerCount] = rewardRatio[i];
-        totalInitialRewardWeight += rewardRatio[i];
+        totalInitialRewardWeight = safeAdd(totalInitialRewardWeight, rewardRatio[i]);
         actualRankerCount++;
       }
     }
@@ -508,8 +511,8 @@ contract Stele {
         
         // Calculate reward based on original ratio
         require(totalInitialRewardWeight > 0, "IW");
-        uint256 adjustedRatio = initialRewards[i] * 100 / totalInitialRewardWeight;
-        uint256 rewardAmount = (challenge.totalRewards * adjustedRatio) / 100;
+        uint256 adjustedRatio = safeDiv(safeMul(initialRewards[i], 100), totalInitialRewardWeight);
+        uint256 rewardAmount = safeDiv(safeMul(challenge.totalRewards, adjustedRatio), 100);
         
         // Cannot distribute more than the available balance
         if (rewardAmount > undistributed) {
@@ -518,7 +521,7 @@ contract Stele {
         
         if (rewardAmount > 0) {
           // Update state before external call (Checks-Effects-Interactions pattern)
-          undistributed -= rewardAmount;
+          undistributed = safeSub(undistributed, rewardAmount);
           
           bool success = usdTokenContract.transfer(userAddress, rewardAmount);
           require(success, "RTF");
@@ -527,5 +530,30 @@ contract Stele {
         }
       }
     }
+  }
+
+  function safeAdd(uint256 a, uint256 b) internal pure returns (uint256) {
+    uint256 c = a + b;
+    require(c >= a, "OFA");
+    return c;
+  }
+
+  function safeSub(uint256 a, uint256 b) internal pure returns (uint256) {
+    require(b <= a, "UF");
+    return a - b;
+  }
+
+  function safeMul(uint256 a, uint256 b) internal pure returns (uint256) {
+    if (a == 0) {
+      return 0;
+    }
+    uint256 c = a * b;
+    require(c / a == b, "OFM");
+    return c;
+  }
+
+  function safeDiv(uint256 a, uint256 b) internal pure returns (uint256) {
+    require(b > 0, "DZ");
+    return a / b;
   }
 }
