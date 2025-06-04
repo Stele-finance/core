@@ -55,7 +55,9 @@ contract Stele {
   uint256 public challengeCounter;
   // Latest challenge ID by challenge type
   mapping(ChallengeType => uint256) public latestChallengesByType;
-  
+  // Rewards distribution tracking
+  mapping(uint256 => bool) public rewardsDistributed;
+
   // Event definitions
   event SteleCreated(address owner,address usdToken, uint8 maxAssets, uint256 seedMoney, uint256 entryFee, uint256[5] rewardRatio);
   event RewardRatio(uint256[5] newRewardRatio);
@@ -467,6 +469,10 @@ contract Stele {
     // Validate challenge
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp >= challenge.endTime, "NE");
+    require(!rewardsDistributed[challengeId], "AD");
+    
+    // Mark as distributed first to prevent reentrancy
+    rewardsDistributed[challengeId] = true;
     
     // Rewards distribution to top 5 participants
     uint256 undistributed = challenge.totalRewards;
@@ -499,6 +505,7 @@ contract Stele {
         address userAddress = validRankers[i];
         
         // Calculate reward based on original ratio
+        require(totalInitialRewardWeight > 0, "IW");
         uint256 adjustedRatio = initialRewards[i] * 100 / totalInitialRewardWeight;
         uint256 rewardAmount = (challenge.totalRewards * adjustedRatio) / 100;
         
@@ -508,10 +515,11 @@ contract Stele {
         }
         
         if (rewardAmount > 0) {
+          // Update state before external call (Checks-Effects-Interactions pattern)
+          undistributed -= rewardAmount;
+          
           bool success = usdTokenContract.transfer(userAddress, rewardAmount);
           require(success, "RTF");
-          
-          undistributed -= rewardAmount;
 
           emit Reward(challengeId, userAddress, rewardAmount);
         }
