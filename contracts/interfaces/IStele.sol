@@ -19,8 +19,6 @@ interface IStele {
   event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 toAmount);
   event Register(uint256 challengeId, address user, uint256 performance);
   event Reward(uint256 challengeId, address user, uint256 rewardAmount);
-  event DebugJoin(address tokenAddress, uint256 amount, uint256 totalRewards);
-  event DebugTokenPrice(address baseToken, uint128 baseAmount, address quoteToken, uint256 quoteAmount);
 
   // Read functions
   function owner() external view returns (address);
@@ -85,8 +83,4 @@ interface IStele {
     uint256 entryFee,
     bool isActive
   );
-
-  //TODO : remove for production
-  // Price function
-  function getTokenPrice(address baseToken, uint128 baseAmount, address quoteToken) external returns (uint256);
 } 

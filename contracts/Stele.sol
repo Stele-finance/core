@@ -73,9 +73,6 @@ contract Stele {
   event Reward(uint256 challengeId, address user, uint256 rewardAmount);
   event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
-  event DebugJoin(address tokenAddress, uint256 amount, uint256 totalRewards);
-  event DebugTokenPrice(address baseToken, uint128 baseAmount, address quoteToken, uint256 quoteAmount);
-
   modifier onlyOwner() {
       require(msg.sender == owner, 'NO');
       _;
@@ -179,7 +176,7 @@ contract Stele {
 
   // Token price query function using Uniswap V3 pool
   // Get Token A price from Token B
-  function getTokenPrice(address baseToken, uint128 baseAmount, address quoteToken) public returns (uint256) {
+  function getTokenPrice(address baseToken, uint128 baseAmount, address quoteToken) internal view returns (uint256) {
     if (baseToken == quoteToken) return baseAmount;
     
     uint16[3] memory fees = [500, 3000, 10000];
@@ -203,7 +200,6 @@ contract Stele {
       }
     }
 
-    emit DebugTokenPrice(baseToken, baseAmount, quoteToken, quoteAmount);
     return quoteAmount;
   }
 
@@ -285,7 +281,6 @@ contract Stele {
     // Update challenge total rewards
     challenge.totalRewards += entryFeeUSD;
     
-    emit DebugJoin(portfolio.assets[0].tokenAddress, portfolio.assets[0].amount, challenge.totalRewards);
     emit Join(challengeId, msg.sender, challenge.seedMoney);
   }
 
@@ -399,58 +394,56 @@ contract Stele {
     emit Register(challengeId, msg.sender, userScore);
   }
 
-  // Helper function to update top performers
+  // Helper function to update top performers (optimized)
   function updateRanking(uint256 challengeId, address user, uint256 userScore) internal {
     Challenge storage challenge = challenges[challengeId];
     
     // Check if user is already in top performers
-    bool isAlreadyTop = false;
-    uint256 existingIndex;
+    int256 existingIndex = -1;
     
     for (uint256 i = 0; i < 10; i++) {
       if (challenge.topUsers[i] == user) {
-        isAlreadyTop = true;
-        existingIndex = i;
+        existingIndex = int256(i);
         break;
       }
     }
     
-    if (isAlreadyTop) {
-      // Update existing entry
-      challenge.score[existingIndex] = userScore;
+    if (existingIndex >= 0) {
+      // User already exists - remove and reinsert
+      uint256 idx = uint256(existingIndex);
       
-      // Re-sort if needed
-      for (uint256 i = existingIndex; i > 0; i--) {
-        if (challenge.score[i] > challenge.score[i-1]) {
-          // Swap positions
-          (challenge.topUsers[i], challenge.topUsers[i-1]) = 
-              (challenge.topUsers[i-1], challenge.topUsers[i]);
-          (challenge.score[i], challenge.score[i-1]) = 
-              (challenge.score[i-1], challenge.score[i]);
-        } else {
-          break;
-        }
+      // Shift elements to remove current position
+      for (uint256 i = idx; i < 9; i++) {
+        challenge.topUsers[i] = challenge.topUsers[i + 1];
+        challenge.score[i] = challenge.score[i + 1];
       }
-    } else {
-      // Check if totalValue is higher than the lowest in top 10
-      if (challenge.topUsers[9] == address(0) || userScore > challenge.score[9]) {
-        // Replace the last entry
-        challenge.topUsers[9] = user;
-        challenge.score[9] = userScore;
-        
-        // Bubble up to correct position
-        for (uint256 i = 9; i > 0; i--) {
-          if (challenge.score[i] > challenge.score[i-1]) {
-            // Swap positions
-            (challenge.topUsers[i], challenge.topUsers[i-1]) = 
-                (challenge.topUsers[i-1], challenge.topUsers[i]);
-            (challenge.score[i], challenge.score[i-1]) = 
-                (challenge.score[i-1], challenge.score[i]);
-          } else {
-            break;
-          }
-        }
+      
+      // Clear last position
+      challenge.topUsers[9] = address(0);
+      challenge.score[9] = 0;
+    }
+    
+    // Find insertion position using binary search concept (for sorted array)
+    uint256 insertPos = 10; // Default: not in top 10
+    
+    for (uint256 i = 0; i < 10; i++) {
+      if (challenge.topUsers[i] == address(0) || userScore > challenge.score[i]) {
+        insertPos = i;
+        break;
       }
+    }
+    
+    // Insert if position found
+    if (insertPos < 10) {
+      // Shift elements to make space
+      for (uint256 i = 9; i > insertPos; i--) {
+        challenge.topUsers[i] = challenge.topUsers[i - 1];
+        challenge.score[i] = challenge.score[i - 1];
+      }
+      
+      // Insert new entry
+      challenge.topUsers[insertPos] = user;
+      challenge.score[insertPos] = userScore;
     }
   }
   
@@ -463,14 +456,23 @@ contract Stele {
   }
 
   // Claim rewards after challenge ends
-  function getRewards(uint256 challengeId) external onlyOwner {
+  function getRewards(uint256 challengeId) external {
     Challenge storage challenge = challenges[challengeId];
-    
     // Validate challenge
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp >= challenge.endTime, "NE");
     require(!rewardsDistributed[challengeId], "AD");
     
+    // Check if caller is in top 5 rankers
+    bool isTopRanker = false;
+    for (uint8 i = 0; i < 5; i++) {
+      if (challenge.topUsers[i] == msg.sender) {
+        isTopRanker = true;
+        break;
+      }
+    }
+    require(isTopRanker, "NT5");
+
     // Mark as distributed first to prevent reentrancy
     rewardsDistributed[challengeId] = true;
     
