@@ -49,6 +49,13 @@ contract Stele {
   uint256[5] public rewardRatio;
   mapping(address => bool) public isInvestable;
 
+  // Stele Token Bonus System
+  address public steleToken;
+  uint256 public createChallengeBonus;
+  uint256 public joinChallengeBonus;
+  uint256 public registerBonus;
+  uint256 public getRewardsBonus;
+
   // Challenge repository
   mapping(uint256 => Challenge) public challenges;
   uint256 public challengeCounter;
@@ -71,6 +78,7 @@ contract Stele {
   event Register(uint256 challengeId, address user, uint256 performance);
   event Reward(uint256 challengeId, address user, uint256 rewardAmount);
   event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+  event SteleTokenBonus(uint256 challengeId, address indexed user, string action, uint256 amount);
 
   modifier onlyOwner() {
       require(msg.sender == owner, 'NO');
@@ -78,7 +86,7 @@ contract Stele {
   }
   
   // Contract constructor
-  constructor(address _usdToken) {
+  constructor(address _usdToken, address _steleToken) {
     owner = msg.sender;
     usdToken = _usdToken;
     usdTokenDecimals = IERC20Minimal(_usdToken).decimals(); 
@@ -89,6 +97,13 @@ contract Stele {
     isInvestable[WETH] = true;
     isInvestable[usdToken] = true;
     challengeCounter = 0;
+
+    // Initialize Stele Token Bonus
+    steleToken = _steleToken;
+    createChallengeBonus = 10000 * 10**18; // 10000 STL tokens
+    joinChallengeBonus = 1000 * 10**18;    // 1000 STL tokens  
+    registerBonus = 1000 * 10**18;         // 1000 STL tokens
+    getRewardsBonus = 300000 * 10**18;     // 300000 STL tokens
 
     emit SteleCreated(owner, usdToken, maxAssets, seedMoney, entryFee, rewardRatio);
   }
@@ -233,6 +248,9 @@ contract Stele {
     }
     
     emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee);
+    
+    // Distribute Stele token bonus for creating challenge
+    distributeSteleBonus(challengeId, msg.sender, createChallengeBonus, "CR");
   }
 
   // Join an existing challenge
@@ -281,6 +299,9 @@ contract Stele {
     challenge.totalRewards = safeAdd(challenge.totalRewards, entryFeeUSD);
     
     emit Join(challengeId, msg.sender, challenge.seedMoney);
+    
+    // Distribute Stele token bonus for joining challenge
+    distributeSteleBonus(challengeId, msg.sender, joinChallengeBonus, "JN");
   }
 
   // Swap assets within a challenge portfolio
@@ -395,6 +416,9 @@ contract Stele {
     challenge.isClosed[msg.sender] = true;
     
     emit Register(challengeId, msg.sender, userScore);
+    
+    // Distribute Stele token bonus for registering performance
+    distributeSteleBonus(challengeId, msg.sender, registerBonus, "RG");
   }
 
   // Helper function to update top performers (optimized)
@@ -530,6 +554,9 @@ contract Stele {
         }
       }
     }
+    
+    // Distribute Stele token bonus to the caller who triggered bonus distribution
+    distributeSteleBonus(challengeId, msg.sender, getRewardsBonus, "RW");
   }
 
   function safeAdd(uint256 a, uint256 b) internal pure returns (uint256) {
@@ -555,5 +582,21 @@ contract Stele {
   function safeDiv(uint256 a, uint256 b) internal pure returns (uint256) {
     require(b > 0, "DZ");
     return a / b;
+  }
+
+  // Internal function to distribute Stele token bonus
+  function distributeSteleBonus(uint256 challengeId, address recipient, uint256 amount, string memory action) internal {
+    if (steleToken == address(0) || amount == 0) return;
+    
+    IERC20Minimal steleTokenContract = IERC20Minimal(steleToken);
+    uint256 contractBalance = steleTokenContract.balanceOf(address(this));
+    
+    if (contractBalance >= amount) {
+      bool success = steleTokenContract.transfer(recipient, amount);
+      if (success) {
+        emit SteleTokenBonus(challengeId, recipient, action, amount);
+      }
+    }
+    // Silently fail if insufficient balance - no revert to avoid breaking main functionality
   }
 }
