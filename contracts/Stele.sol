@@ -405,7 +405,7 @@ contract Stele {
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
       uint8 _tokenDecimals = IERC20Minimal(portfolio.assets[i].tokenAddress).decimals();
       uint256 assetPriceUSD = getTokenPrice(portfolio.assets[i].tokenAddress, uint128(1 * 10 ** _tokenDecimals), usdToken);
-      uint256 assetValueUSD = safeMul(safeDiv(portfolio.assets[i].amount, 10 ** _tokenDecimals), assetPriceUSD);
+      uint256 assetValueUSD = safeDiv(safeMul(portfolio.assets[i].amount, assetPriceUSD), 10 ** _tokenDecimals);
       userScore = safeAdd(userScore, assetValueUSD);
     }
     
