@@ -3,7 +3,6 @@ pragma solidity =0.7.6;
 pragma abicoder v2;
 
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
-import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol';
 import './interfaces/IERC20Minimal.sol';
 
@@ -203,7 +202,7 @@ contract Stele {
       }
 
       uint32 secondsAgo = OracleLibrary.getOldestObservationSecondsAgo(pool);
-      uint32 maxSecondsAgo = 300;
+      uint32 maxSecondsAgo = 1800;
       secondsAgo = secondsAgo > maxSecondsAgo ? maxSecondsAgo : secondsAgo;
 
       (int24 tick, ) = OracleLibrary.consult(address(pool), secondsAgo);
@@ -316,6 +315,7 @@ contract Stele {
     // Validate assets
     require(isInvestable[from], "IF");
     require(isInvestable[to], "ITO");
+    require(from != to, "ST"); // Prevent same token swap
     
     // Get user portfolio
     UserPortfolio storage portfolio = challenge.portfolios[msg.sender];
@@ -341,22 +341,23 @@ contract Stele {
 
     uint256 fromPriceUSD = getTokenPrice(from, uint128(1 * 10 ** fromTokenDecimals), usdToken);
     uint256 toPriceUSD = getTokenPrice(to, uint128(1 * 10 ** toTokenDecimals), usdToken);
-    
-    require(safeMul(amount, fromPriceUSD) >= toPriceUSD);
+        
+    // Validate that prices are available
+    require(fromPriceUSD > 0, "FP0");
+    require(toPriceUSD > 0, "TP0");
     
     // Calculate swap amount with decimal adjustment
-    uint256 toAmount;
-    if (toTokenDecimals >= fromTokenDecimals) {
-        // When to token has larger decimals (e.g., USDC(6) -> BTC(8))
-        uint256 temp1 = safeMul(amount, fromPriceUSD);
-        uint256 temp2 = safeMul(temp1, 10 ** (toTokenDecimals - fromTokenDecimals));
-        toAmount = safeDiv(temp2, toPriceUSD);
-    } else {
-        // When from token has larger decimals (e.g., BTC(8) -> USDC(6))
-        uint256 temp1 = safeMul(amount, fromPriceUSD);
-        uint256 temp2 = safeDiv(temp1, 10 ** (fromTokenDecimals - toTokenDecimals));
-        toAmount = safeDiv(temp2, toPriceUSD);
+    uint256 toAmount = safeDiv(safeMul(amount, fromPriceUSD), toPriceUSD);
+    
+    // Adjust for decimal differences
+    if (toTokenDecimals > fromTokenDecimals) {
+      toAmount = safeMul(toAmount, 10 ** (toTokenDecimals - fromTokenDecimals));
+    } else if (fromTokenDecimals > toTokenDecimals) {
+      toAmount = safeDiv(toAmount, 10 ** (fromTokenDecimals - toTokenDecimals));
     }
+    
+    // Ensure swap amount is not zero
+    require(toAmount > 0, "TA0");
     
     // Update source asset
     portfolio.assets[index].amount = safeSub(portfolio.assets[index].amount, amount);
@@ -382,7 +383,10 @@ contract Stele {
     
     // Remove asset if balance is zero
     if (portfolio.assets[index].amount == 0) {
-      portfolio.assets[index] = portfolio.assets[portfolio.assets.length - 1];
+      // Only reorganize array if not already the last element
+      if (index != portfolio.assets.length - 1) {
+        portfolio.assets[index] = portfolio.assets[portfolio.assets.length - 1];
+      }
       portfolio.assets.pop();
     }
 
