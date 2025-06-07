@@ -101,8 +101,8 @@ contract Stele {
     // Initialize Stele Token Bonus
     steleToken = _steleToken;
     createChallengeBonus = 10000 * 10**18; // 10000 STL tokens
-    joinChallengeBonus = 1000 * 10**18;    // 1000 STL tokens  
-    registerBonus = 1000 * 10**18;         // 1000 STL tokens
+    joinChallengeBonus = 500 * 10**18;    // 500 STL tokens  
+    registerBonus = 500 * 10**18;         // 500 STL tokens
     getRewardsBonus = 300000 * 10**18;     // 300000 STL tokens
 
     emit SteleCreated(owner, usdToken, maxAssets, seedMoney, entryFee, rewardRatio);
