@@ -90,8 +90,8 @@ contract Stele {
     usdToken = _usdToken;
     usdTokenDecimals = IERC20Minimal(_usdToken).decimals(); 
     maxAssets = 10;
-    seedMoney = 1000; // $1000 (ex. 1000 USDC token)
-    entryFee = 10; // $10 (ex. 10 USDC token)
+    seedMoney = 1000 * 10**usdTokenDecimals;
+    entryFee = 10 * 10**usdTokenDecimals;
     rewardRatio = [50, 26, 13, 7, 4];
     isInvestable[WETH] = true;
     isInvestable[usdToken] = true;
@@ -264,10 +264,8 @@ contract Stele {
     // Check if user has already joined
     require(challenge.portfolios[msg.sender].assets.length == 0, "AJ");
     
-    // Calculate entry fee (USD token)
-    uint256 entryFeeUSD = safeMul(challenge.entryFee, 10 ** usdTokenDecimals); // Convert to token decimals
     // TODO : test
-    entryFeeUSD = safeDiv(entryFeeUSD, 100);
+    uint256 entryFeeUSD = safeDiv(entryFee, 100);
     //entryFeeUSD = entryFeeUSD;
 
     // Transfer USD token to contract
@@ -289,7 +287,7 @@ contract Stele {
     // Initialize with seed money in USD
     Asset memory initialAsset = Asset({
       tokenAddress: usdToken,
-      amount: safeMul(challenge.seedMoney, 10 ** usdTokenDecimals)
+      amount: challenge.seedMoney
     });
     
     portfolio.assets.push(initialAsset);

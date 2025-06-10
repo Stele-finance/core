@@ -80,8 +80,8 @@ describe("Stele Contract", function () {
 
       expect(steleCreatedEvent.usdToken).to.equal(USDC);
       expect(steleCreatedEvent.maxAssets).to.equal(10);
-      expect(steleCreatedEvent.seedMoney).to.equal(1000);
-      expect(steleCreatedEvent.entryFee).to.equal(10);
+      expect(steleCreatedEvent.seedMoney).to.equal(1000*10**usdcDecimals);
+      expect(steleCreatedEvent.entryFee).to.equal(10*10**usdcDecimals);
       expect(steleCreatedEvent.rewardRatio).to.deep.equal([50, 26, 13, 7, 4]);
     });
 
