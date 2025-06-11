@@ -51,8 +51,6 @@ contract Stele {
   // Stele Token Bonus System
   address public steleToken;
   uint256 public createChallengeBonus;
-  uint256 public joinChallengeBonus;
-  uint256 public registerBonus;
   uint256 public getRewardsBonus;
 
   // Challenge repository
@@ -100,8 +98,6 @@ contract Stele {
     // Initialize Stele Token Bonus
     steleToken = _steleToken;
     createChallengeBonus = 10000 * 10**18; // 10000 STL tokens
-    joinChallengeBonus = 500 * 10**18;    // 500 STL tokens  
-    registerBonus = 500 * 10**18;         // 500 STL tokens
     getRewardsBonus = 300000 * 10**18;     // 300000 STL tokens
 
     emit SteleCreated(owner, usdToken, maxAssets, seedMoney, entryFee, rewardRatio);
@@ -295,10 +291,7 @@ contract Stele {
     // Update challenge total rewards
     challenge.totalRewards = safeAdd(challenge.totalRewards, entryFeeUSD);
     
-    emit Join(challengeId, msg.sender, challenge.seedMoney);
-    
-    // Distribute Stele token bonus for joining challenge
-    distributeSteleBonus(challengeId, msg.sender, joinChallengeBonus, "JN");
+    emit Join(challengeId, msg.sender, challenge.seedMoney);    
   }
 
   // Swap assets within a challenge portfolio
@@ -417,10 +410,7 @@ contract Stele {
     // Mark position as closed
     challenge.isClosed[msg.sender] = true;
     
-    emit Register(challengeId, msg.sender, userScore);
-    
-    // Distribute Stele token bonus for registering performance
-    distributeSteleBonus(challengeId, msg.sender, registerBonus, "RG");
+    emit Register(challengeId, msg.sender, userScore);    
   }
 
   // Helper function to update top performers (optimized)
