@@ -2,9 +2,9 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-ethers";
 require("@nomicfoundation/hardhat-ignition");
+require('dotenv').config();
 
-
-const ETHERSCAN_API_KEY = vars.get("P35YFHFMUKNMPDAVG73MIB4W53N2E91IA3");
+const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "P35YFHFMUKNMPDAVG73MIB4W53N2E91IA3";
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -33,13 +33,18 @@ module.exports = {
     hardhat: {
       chainId: 31337,
       forking: {
-        url: `https://eth-mainnet.g.alchemy.com/v2/` + process.env.BASE_API_KEY,
+        url: "https://mainnet.infura.io/v3/" + process.env.INFURA_API_KEY,
         //blockNumber: 14390000
       },
       //allowUnlimitedContractSize: true,
     },
+    mainnet: {
+      url: "https://mainnet.infura.io/v3/" + process.env.INFURA_API_KEY,
+      accounts: [process.env.PRIVATE_KEY],
+      chainId: 1,
+    },
     base: {
-      url: "https://base-mainnet.infura.io/v3/" + process.env.BASE_API_KEY,
+      url: "https://base-mainnet.infura.io/v3/" + process.env.INFURA_API_KEY,
       accounts: [process.env.PRIVATE_KEY],
       chainId: 8453,
     },

@@ -35,8 +35,8 @@ struct Challenge {
 contract Stele {
 
   // Base Mainnet
-  address public uniswapV3Factory = 0x33128a8fC17869897dcE68Ed026d694621f6FDfD;
-  address public WETH = 0x4200000000000000000000000000000000000006;
+  address public uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
+  address public WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
   // State variables
   address public owner;
@@ -183,6 +183,59 @@ contract Stele {
     return (tokenAddresses, amounts);
   }
 
+  // Get USD price from ETH (1 ETH = ? USD)
+  function getETHPriceUSD() internal view returns (uint256) {
+    uint16[3] memory fees = [500, 3000, 10000];
+    uint256 quoteAmount = 0;
+
+    for (uint256 i=0; i<fees.length; i++) {
+      address pool = IUniswapV3Factory(uniswapV3Factory).getPool(WETH, usdToken, uint24(fees[i]));
+      if (pool == address(0)) {
+          continue;
+      }
+
+      uint32 secondsAgo = OracleLibrary.getOldestObservationSecondsAgo(pool);
+      uint32 maxSecondsAgo = 1800;
+      secondsAgo = secondsAgo > maxSecondsAgo ? maxSecondsAgo : secondsAgo;
+
+      (int24 tick, ) = OracleLibrary.consult(address(pool), secondsAgo);
+      uint256 _quoteAmount = OracleLibrary.getQuoteAtTick(tick, uint128(1 * 10**18), WETH, usdToken);
+      
+      if (quoteAmount < _quoteAmount) {
+        quoteAmount = _quoteAmount;
+      }
+    }
+
+    return quoteAmount;
+  }
+
+  // Get token price in ETH
+  function getTokenPriceETH(address baseToken, uint128 baseAmount) internal view returns (uint256) { 
+    address quoteToken = WETH;
+    uint16[3] memory fees = [500, 3000, 10000];
+    uint256 quoteAmount = 0;
+
+    for (uint256 i=0; i<fees.length; i++) {
+      address pool = IUniswapV3Factory(uniswapV3Factory).getPool(baseToken, quoteToken, uint24(fees[i]));
+      if (pool == address(0)) {
+          continue;
+      }
+
+      uint32 secondsAgo = OracleLibrary.getOldestObservationSecondsAgo(pool);
+      uint32 maxSecondsAgo = 1800;
+      secondsAgo = secondsAgo > maxSecondsAgo ? maxSecondsAgo : secondsAgo;
+
+      (int24 tick, ) = OracleLibrary.consult(address(pool), secondsAgo);
+      uint256 _quoteAmount = OracleLibrary.getQuoteAtTick(tick, baseAmount, baseToken, quoteToken);
+      
+      if (quoteAmount < _quoteAmount) {
+        quoteAmount = _quoteAmount;
+      }
+    }
+
+    return quoteAmount;
+  }
+
   // Token price query function using Uniswap V3 pool
   // Get Token A price from Token B
   function getTokenPrice(address baseToken, uint128 baseAmount, address quoteToken) internal view returns (uint256) {
@@ -260,21 +313,17 @@ contract Stele {
     // Check if user has already joined
     require(challenge.portfolios[msg.sender].assets.length == 0, "AJ");
     
-    // TODO : test
-    uint256 entryFeeUSD = safeDiv(entryFee, 100);
-    //entryFeeUSD = entryFeeUSD;
-
     // Transfer USD token to contract
     IERC20Minimal usdTokenContract = IERC20Minimal(usdToken);
     
     // First check if user has enough tokens
-    require(usdTokenContract.balanceOf(msg.sender) >= entryFeeUSD, "NEB");
+    require(usdTokenContract.balanceOf(msg.sender) >= entryFee, "NEB");
     
     // Check if user has approved the contract to transfer tokens
-    require(usdTokenContract.allowance(msg.sender, address(this)) >= entryFeeUSD, "NA");
+    require(usdTokenContract.allowance(msg.sender, address(this)) >= entryFee, "NA");
     
     // Transfer tokens
-    bool transferSuccess = usdTokenContract.transferFrom(msg.sender, address(this), entryFeeUSD);
+    bool transferSuccess = usdTokenContract.transferFrom(msg.sender, address(this), entryFee);
     require(transferSuccess, "TF");
     
     // Add user to challenge
@@ -289,7 +338,7 @@ contract Stele {
     portfolio.assets.push(initialAsset);
     
     // Update challenge total rewards
-    challenge.totalRewards = safeAdd(challenge.totalRewards, entryFeeUSD);
+    challenge.totalRewards = safeAdd(challenge.totalRewards, entryFee);
     
     emit Join(challengeId, msg.sender, challenge.seedMoney);    
   }
@@ -326,20 +375,38 @@ contract Stele {
     
     require(found, "ANE");
 
-    // Get asset prices
+    // Get asset prices using ETH as intermediate
     uint8 fromTokenDecimals = IERC20Minimal(from).decimals();
     uint8 toTokenDecimals = IERC20Minimal(to).decimals();
 
-    uint256 fromPriceUSD = getTokenPrice(from, uint128(1 * 10 ** fromTokenDecimals), usdToken);
-    uint256 toPriceUSD = getTokenPrice(to, uint128(1 * 10 ** toTokenDecimals), usdToken);
+    uint256 fromPriceUSD;
+    uint256 toPriceUSD;
+        
+    // Calculate fromPriceUSD using ETH as intermediate
+    if (from == usdToken) {
+      fromPriceUSD = 1 * 10 ** usdTokenDecimals;
+    } else if (from == WETH) {
+      fromPriceUSD = getETHPriceUSD();
+    } else {
+      fromPriceUSD = safeDiv(safeMul(getTokenPriceETH(from, uint128(1 * 10 ** fromTokenDecimals)), getETHPriceUSD()), 10 ** 18);
+    }
+    
+    // Calculate toPriceUSD using ETH as intermediate
+    if (to == usdToken) {
+      toPriceUSD = 1 * 10 ** usdTokenDecimals;
+    } else if (to == WETH) {
+      toPriceUSD = getETHPriceUSD();
+    } else {
+      toPriceUSD = safeDiv(safeMul(getTokenPriceETH(to, uint128(1 * 10 ** toTokenDecimals)), getETHPriceUSD()), 10 ** 18);
+    }
         
     // Validate that prices are available
     require(fromPriceUSD > 0, "FP0");
     require(toPriceUSD > 0, "TP0");
-    
+
     // Calculate swap amount with decimal adjustment
     uint256 toAmount = safeDiv(safeMul(amount, fromPriceUSD), toPriceUSD);
-    
+
     // Adjust for decimal differences
     if (toTokenDecimals > fromTokenDecimals) {
       toAmount = safeMul(toAmount, 10 ** (toTokenDecimals - fromTokenDecimals));
@@ -393,13 +460,25 @@ contract Stele {
     require(block.timestamp < challenge.endTime, "E");
     require(!challenge.isClosed[msg.sender], "C");
     
-    // Calculate total portfolio value USD
+    // Calculate total portfolio value USD using ETH as intermediate
     uint256 userScore = 0;
+    uint256 ethPriceUSD = getETHPriceUSD(); // Get ETH price once for efficiency
     
     UserPortfolio storage portfolio = challenge.portfolios[msg.sender];
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
-      uint8 _tokenDecimals = IERC20Minimal(portfolio.assets[i].tokenAddress).decimals();
-      uint256 assetPriceUSD = getTokenPrice(portfolio.assets[i].tokenAddress, uint128(1 * 10 ** _tokenDecimals), usdToken);
+      address tokenAddress = portfolio.assets[i].tokenAddress;
+      uint8 _tokenDecimals = IERC20Minimal(tokenAddress).decimals();
+      
+      uint256 assetPriceUSD;
+      if (tokenAddress == usdToken) {
+        assetPriceUSD = 1 * 10 ** usdTokenDecimals;
+      } else if (tokenAddress == WETH) {
+        assetPriceUSD = ethPriceUSD;
+      } else {
+        uint256 assetPriceETH = getTokenPriceETH(tokenAddress, uint128(1 * 10 ** _tokenDecimals));
+        assetPriceUSD = safeDiv(safeMul(assetPriceETH, ethPriceUSD), 10 ** 18);
+      }
+      
       uint256 assetValueUSD = safeDiv(safeMul(portfolio.assets[i].amount, assetPriceUSD), 10 ** _tokenDecimals);
       userScore = safeAdd(userScore, assetValueUSD);
     }

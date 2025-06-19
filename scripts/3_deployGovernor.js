@@ -5,13 +5,12 @@ async function main() {
   console.log("Deploying governance contracts with the account:", deployer.address);
   console.log("Account balance:", (await ethers.provider.getBalance(deployer.address)).toString());
 
-  // Base Mainnet
-  const tokenAddress = "0x8B1136AeBb8e0FA452AC0d67984B658A852d030f";
-  const timeLockAddress = "0x5932498283e3FcDac15602824D5AE71E280b9f4c";
+  // Mainnet
+  const tokenAddress = "0xB82f40c4b42960BA4387c5FaC5763a3e86a1BF3c";
+  const timeLockAddress = "0x224C9D355e0F88bD6ef8e4168D1aE1c907B5762e";
   // Governor values
   const QUORUM_PERCENTAGE = 4; // 4%
-  //const VOTING_PERIOD = 45818; // 1 week
-  const VOTING_PERIOD = 500;
+  const VOTING_PERIOD = 45818; // 1 week
   const VOTING_DELAY = 1; // 1 block
 
   // Deploy Governor
