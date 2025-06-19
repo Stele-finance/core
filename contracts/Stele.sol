@@ -112,9 +112,9 @@ contract Stele {
 
   // Duration in seconds for each challenge type
   function getDuration(ChallengeType challengeType) internal pure returns (uint256) {
-    if (challengeType == ChallengeType.OneWeek) return 30 minutes;
-    if (challengeType == ChallengeType.OneMonth) return 1 hours;
-    if (challengeType == ChallengeType.ThreeMonths) return 2 hours;
+    if (challengeType == ChallengeType.OneWeek) return 7 days;
+    if (challengeType == ChallengeType.OneMonth) return 30 days;
+    if (challengeType == ChallengeType.ThreeMonths) return 90 days;
     if (challengeType == ChallengeType.SixMonths) return 180 days;
     if (challengeType == ChallengeType.OneYear) return 365 days;
     return 0;
