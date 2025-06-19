@@ -615,8 +615,8 @@ contract Stele {
         
         // Calculate reward based on original ratio
         require(totalInitialRewardWeight > 0, "IW");
-        uint256 adjustedRatio = safeDiv(safeMul(initialRewards[i], 100), totalInitialRewardWeight);
-        uint256 rewardAmount = safeDiv(safeMul(challenge.totalRewards, adjustedRatio), 100);
+        // Use direct calculation to avoid precision loss
+        uint256 rewardAmount = safeDiv(safeMul(challenge.totalRewards, initialRewards[i]), totalInitialRewardWeight);
         
         // Cannot distribute more than the available balance
         if (rewardAmount > undistributed) {
