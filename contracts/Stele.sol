@@ -91,14 +91,17 @@ contract Stele {
     seedMoney = 1000 * 10**usdTokenDecimals;
     entryFee = 10 * 10**usdTokenDecimals;
     rewardRatio = [50, 26, 13, 7, 4];
-    isInvestable[WETH] = true;
-    isInvestable[usdToken] = true;
     challengeCounter = 0;
-
     // Initialize Stele Token Bonus
     steleToken = _steleToken;
     createChallengeBonus = 10000 * 10**18; // 10000 STL tokens
-    getRewardsBonus = 300000 * 10**18;     // 300000 STL tokens
+    getRewardsBonus = 500000 * 10**18;     // 500000 STL tokens
+
+    // Initialize investable tokens directly
+    isInvestable[WETH] = true;
+    emit AddToken(WETH);
+    isInvestable[usdToken] = true;
+    emit AddToken(usdToken);
 
     emit SteleCreated(owner, usdToken, maxAssets, seedMoney, entryFee, rewardRatio);
   }
@@ -154,12 +157,20 @@ contract Stele {
   
   // Investable token setting function
   function setToken(address tokenAddress) external onlyOwner {
+    require(tokenAddress != address(0), "ZA"); // Zero Address
+    require(!isInvestable[tokenAddress], "AT"); // Already Token
+    
     isInvestable[tokenAddress] = true;
     emit AddToken(tokenAddress);
   }
   
   // Non-investable token setting function
   function resetToken(address tokenAddress) external onlyOwner {
+    require(tokenAddress != address(0), "ZA"); // Zero Address
+    require(isInvestable[tokenAddress], "NT"); // Not investableToken
+    require(tokenAddress != usdToken, "UCR"); // USD token Cannot be Removed
+    require(tokenAddress != WETH, "WCR"); // WETH Cannot be Removed
+
     isInvestable[tokenAddress] = false;
     emit RemoveToken(tokenAddress);
   }
@@ -353,8 +364,6 @@ contract Stele {
     require(!challenge.isClosed[msg.sender], "C");
     
     // Validate assets
-    require(isInvestable[from], "IF");
-    require(isInvestable[to], "ITO");
     require(from != to, "ST"); // Prevent same token swap
     
     // Get user portfolio
@@ -622,12 +631,12 @@ contract Stele {
           require(success, "RTF");
 
           emit Reward(challengeId, userAddress, rewardAmount);
+          
+          // Distribute Stele token bonus to each ranker
+          distributeSteleBonus(challengeId, userAddress, getRewardsBonus, "RW");
         }
       }
     }
-    
-    // Distribute Stele token bonus to the caller who triggered bonus distribution
-    distributeSteleBonus(challengeId, msg.sender, getRewardsBonus, "RW");
   }
 
   function safeAdd(uint256 a, uint256 b) internal pure returns (uint256) {
