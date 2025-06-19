@@ -18,7 +18,8 @@ describe("Stele Contract", function () {
   const USDC = process.env.USDC || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
   const WETH = process.env.WETH || "0x4200000000000000000000000000000000000006";
   const CBBTC = process.env.CBBTC || "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf";
-  
+  const STELE_TOKEN = process.env.STELE_TOKEN || "0x0000000000000000000000000000000000000000";
+
   before("Setup", async function () {
     try {
       const [owner, otherAccount, thirdAccount] = await ethers.getSigners();
@@ -28,7 +29,7 @@ describe("Stele Contract", function () {
 
       // Deploy Stele contract
       const Stele = await ethers.getContractFactory("Stele");
-      stele = await Stele.deploy(USDC);
+      stele = await Stele.deploy(USDC, STELE_TOKEN);
       await stele.waitForDeployment();
 
       // Get USDC contract instance
@@ -53,7 +54,7 @@ describe("Stele Contract", function () {
 
     it("Should emit SteleCreated event with correct parameters", async function () {
       const Stele = await ethers.getContractFactory("Stele");
-      const stele = await Stele.deploy(USDC);
+      const stele = await Stele.deploy(USDC, STELE_TOKEN);
       const deployment = await stele.waitForDeployment();
       
       const receipt = await deployment.deploymentTransaction()?.wait();
@@ -79,8 +80,8 @@ describe("Stele Contract", function () {
 
       expect(steleCreatedEvent.usdToken).to.equal(USDC);
       expect(steleCreatedEvent.maxAssets).to.equal(10);
-      expect(steleCreatedEvent.seedMoney).to.equal(1000);
-      expect(steleCreatedEvent.entryFee).to.equal(10);
+      expect(steleCreatedEvent.seedMoney).to.equal(1000*10**usdcDecimals);
+      expect(steleCreatedEvent.entryFee).to.equal(10*10**usdcDecimals);
       expect(steleCreatedEvent.rewardRatio).to.deep.equal([50, 26, 13, 7, 4]);
     });
 
@@ -115,24 +116,8 @@ describe("Stele Contract", function () {
         console.log("Entry Fee in USD:", formatedFee); // $0.1
         
         console.log("Calling getTokenPrice...");
-        const ethPriceTx = await stele.getTokenPrice(WETH, ethers.parseEther("1"), USDC);        
-        const receipt = await ethPriceTx.wait();
-        
-        // Extract price information from events
-        let ethPrice;
-        for (const log of receipt.logs) {
-          try {
-            const parsedLog = stele.interface.parseLog(log);
-            if (parsedLog && parsedLog.name === 'DebugTokenPrice') {
-              ethPrice = parsedLog.args.quoteAmount;
-              console.log("ETH Price in USD:", ethers.formatUnits(ethPrice, usdTokenDecimals));
-              break;
-            }
-          } catch (e) {
-            console.log("Failed to parse log:", e);
-            continue;
-          }
-        }
+        const ethPrice = await stele.getTokenPrice(WETH, ethers.parseEther("1"), USDC);        
+        console.log("ETH Price in USD:", ethers.formatUnits(ethPrice, usdTokenDecimals));
         
         if (!ethPrice) {
           throw new Error("Could not find ETH price in events");
@@ -248,10 +233,115 @@ describe("Stele Contract", function () {
         console.error("Swap test error:", error);
         throw error;
       }
+      const latestChallengeId = await stele.latestChallengesByType(ChallengeType.OneWeek);
+      // Get portfolio data
+      const [tokenAddresses, amounts] = await stele.getUserPortfolio(latestChallengeId, deployer.address);
+      console.log("Portfolio data:");
+      console.log("  Token Addresses:", tokenAddresses);
+      console.log("  Amounts:", amounts);
     });
   });
 
   describe("Asset Swap 2", function () {
+    it("USDC 200 -> cbBTC", async function () {
+      try {
+        const usdTokenDecimals = await stele.usdTokenDecimals();
+        const swapAmount = ethers.parseUnits("200", usdTokenDecimals); // 200 * 10 ** 6 = 20000000
+
+        // Swap from USDC to CBBTC
+        console.log("Calling swap...");
+        console.log("From:", USDC);
+        console.log("To:", CBBTC);
+        console.log("Amount:", swapAmount.toString());
+     
+        const latestChallengeId = await stele.latestChallengesByType(ChallengeType.OneWeek);
+        const swapTx = await stele.swap(latestChallengeId, USDC, CBBTC, swapAmount);
+        const swapReceipt = await swapTx.wait();
+        console.log("Swap transaction completed:", swapReceipt.hash);
+        
+        // Extract swap information from events
+        for (const log of swapReceipt.logs) {
+          try {
+            const parsedLog = stele.interface.parseLog(log);
+            if (parsedLog && parsedLog.name === 'Swap') {
+              console.log("Swap event:");
+              console.log("  Challenge ID:", parsedLog.args.challengeId.toString());
+              console.log("  User:", parsedLog.args.user);
+              console.log("  From Asset:", parsedLog.args.fromAsset);
+              console.log("  To Asset:", parsedLog.args.toAsset);
+              console.log("  From Amount:", parsedLog.args.fromAmount.toString());
+              console.log("  To Amount:", parsedLog.args.toAmount.toString());
+              break;
+            }
+          } catch (e) {
+            console.log("Failed to parse log:", e);
+            continue;
+          }
+        }
+      } catch (error) {
+        console.error("Swap test error:", error);
+        throw error;
+      }
+      const latestChallengeId = await stele.latestChallengesByType(ChallengeType.OneWeek);
+      // Get portfolio data
+      const [tokenAddresses, amounts] = await stele.getUserPortfolio(latestChallengeId, deployer.address);
+      console.log("Portfolio data:");
+      console.log("  Token Addresses:", tokenAddresses);
+      console.log("  Amounts:", amounts);
+    });
+  });
+
+
+  describe("Asset Swap 3", function () {
+    it("USDC 300 -> cbBTC", async function () {
+      try {
+        const usdTokenDecimals = await stele.usdTokenDecimals();
+        const swapAmount = ethers.parseUnits("300", usdTokenDecimals); // 300 * 10 ** 6 = 20000000
+
+        // Swap from USDC to CBBTC
+        console.log("Calling swap...");
+        console.log("From:", USDC);
+        console.log("To:", CBBTC);
+        console.log("Amount:", swapAmount.toString());
+     
+        const latestChallengeId = await stele.latestChallengesByType(ChallengeType.OneWeek);
+        const swapTx = await stele.swap(latestChallengeId, USDC, CBBTC, swapAmount);
+        const swapReceipt = await swapTx.wait();
+        console.log("Swap transaction completed:", swapReceipt.hash);
+        
+        // Extract swap information from events
+        for (const log of swapReceipt.logs) {
+          try {
+            const parsedLog = stele.interface.parseLog(log);
+            if (parsedLog && parsedLog.name === 'Swap') {
+              console.log("Swap event:");
+              console.log("  Challenge ID:", parsedLog.args.challengeId.toString());
+              console.log("  User:", parsedLog.args.user);
+              console.log("  From Asset:", parsedLog.args.fromAsset);
+              console.log("  To Asset:", parsedLog.args.toAsset);
+              console.log("  From Amount:", parsedLog.args.fromAmount.toString());
+              console.log("  To Amount:", parsedLog.args.toAmount.toString());
+              break;
+            }
+          } catch (e) {
+            console.log("Failed to parse log:", e);
+            continue;
+          }
+        }
+      } catch (error) {
+        console.error("Swap test error:", error);
+        throw error;
+      }
+      const latestChallengeId = await stele.latestChallengesByType(ChallengeType.OneWeek);
+      // Get portfolio data
+      const [tokenAddresses, amounts] = await stele.getUserPortfolio(latestChallengeId, deployer.address);
+      console.log("Portfolio data:");
+      console.log("  Token Addresses:", tokenAddresses);
+      console.log("  Amounts:", amounts);
+    });
+  });
+
+  describe("Asset Swap 4", function () {
     it("cbBTC -> USDC", async function () {
       try {
         const swapAmount = ethers.parseUnits("0.0005", cbbtcDecimals);
@@ -324,5 +414,6 @@ describe("Stele Contract", function () {
   //     expect(userBalance).to.be.gt(0);
   //   });
   // });
+
 
 });

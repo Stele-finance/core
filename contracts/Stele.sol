@@ -3,10 +3,8 @@ pragma solidity =0.7.6;
 pragma abicoder v2;
 
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
-import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol';
 import './interfaces/IERC20Minimal.sol';
-import "hardhat/console.sol";
 
 // Challenge type definition
 enum ChallengeType { OneWeek, OneMonth, ThreeMonths, SixMonths, OneYear }
@@ -50,12 +48,19 @@ contract Stele {
   uint256[5] public rewardRatio;
   mapping(address => bool) public isInvestable;
 
+  // Stele Token Bonus System
+  address public steleToken;
+  uint256 public createChallengeBonus;
+  uint256 public getRewardsBonus;
+
   // Challenge repository
   mapping(uint256 => Challenge) public challenges;
   uint256 public challengeCounter;
   // Latest challenge ID by challenge type
   mapping(ChallengeType => uint256) public latestChallengesByType;
-  
+  // Rewards distribution tracking
+  mapping(uint256 => bool) public rewardsDistributed;
+
   // Event definitions
   event SteleCreated(address owner,address usdToken, uint8 maxAssets, uint256 seedMoney, uint256 entryFee, uint256[5] rewardRatio);
   event RewardRatio(uint256[5] newRewardRatio);
@@ -70,9 +75,7 @@ contract Stele {
   event Register(uint256 challengeId, address user, uint256 performance);
   event Reward(uint256 challengeId, address user, uint256 rewardAmount);
   event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
-  event DebugJoin(address tokenAddress, uint256 amount, uint256 totalRewards);
-  event DebugTokenPrice(address baseToken, uint128 baseAmount, address quoteToken, uint256 quoteAmount);
+  event SteleTokenBonus(uint256 challengeId, address indexed user, string action, uint256 amount);
 
   modifier onlyOwner() {
       require(msg.sender == owner, 'NO');
@@ -80,17 +83,22 @@ contract Stele {
   }
   
   // Contract constructor
-  constructor(address _usdToken) {
+  constructor(address _usdToken, address _steleToken) {
     owner = msg.sender;
     usdToken = _usdToken;
     usdTokenDecimals = IERC20Minimal(_usdToken).decimals(); 
     maxAssets = 10;
-    seedMoney = 1000; // $1000 (ex. 1000 USDC token)
-    entryFee = 10; // $10 (ex. 10 USDC token)
+    seedMoney = 1000 * 10**usdTokenDecimals;
+    entryFee = 10 * 10**usdTokenDecimals;
     rewardRatio = [50, 26, 13, 7, 4];
     isInvestable[WETH] = true;
     isInvestable[usdToken] = true;
     challengeCounter = 0;
+
+    // Initialize Stele Token Bonus
+    steleToken = _steleToken;
+    createChallengeBonus = 10000 * 10**18; // 10000 STL tokens
+    getRewardsBonus = 300000 * 10**18;     // 300000 STL tokens
 
     emit SteleCreated(owner, usdToken, maxAssets, seedMoney, entryFee, rewardRatio);
   }
@@ -177,7 +185,7 @@ contract Stele {
 
   // Token price query function using Uniswap V3 pool
   // Get Token A price from Token B
-  function getTokenPrice(address baseToken, uint128 baseAmount, address quoteToken) public returns (uint256) {
+  function getTokenPrice(address baseToken, uint128 baseAmount, address quoteToken) internal view returns (uint256) {
     if (baseToken == quoteToken) return baseAmount;
     
     uint16[3] memory fees = [500, 3000, 10000];
@@ -190,7 +198,7 @@ contract Stele {
       }
 
       uint32 secondsAgo = OracleLibrary.getOldestObservationSecondsAgo(pool);
-      uint32 maxSecondsAgo = 300;
+      uint32 maxSecondsAgo = 1800;
       secondsAgo = secondsAgo > maxSecondsAgo ? maxSecondsAgo : secondsAgo;
 
       (int24 tick, ) = OracleLibrary.consult(address(pool), secondsAgo);
@@ -201,7 +209,6 @@ contract Stele {
       }
     }
 
-    emit DebugTokenPrice(baseToken, baseAmount, quoteToken, quoteAmount);
     return quoteAmount;
   }
 
@@ -236,6 +243,9 @@ contract Stele {
     }
     
     emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee);
+    
+    // Distribute Stele token bonus for creating challenge
+    distributeSteleBonus(challengeId, msg.sender, createChallengeBonus, "CR");
   }
 
   // Join an existing challenge
@@ -250,10 +260,8 @@ contract Stele {
     // Check if user has already joined
     require(challenge.portfolios[msg.sender].assets.length == 0, "AJ");
     
-    // Calculate entry fee (USD token)
-    uint256 entryFeeUSD = challenge.entryFee * 10 ** usdTokenDecimals; // Convert to token decimals
     // TODO : test
-    entryFeeUSD = entryFeeUSD / 100;
+    uint256 entryFeeUSD = safeDiv(entryFee, 100);
     //entryFeeUSD = entryFeeUSD;
 
     // Transfer USD token to contract
@@ -275,16 +283,15 @@ contract Stele {
     // Initialize with seed money in USD
     Asset memory initialAsset = Asset({
       tokenAddress: usdToken,
-      amount: challenge.seedMoney * 10 ** usdTokenDecimals
+      amount: challenge.seedMoney
     });
     
     portfolio.assets.push(initialAsset);
     
     // Update challenge total rewards
-    challenge.totalRewards += entryFeeUSD;
+    challenge.totalRewards = safeAdd(challenge.totalRewards, entryFeeUSD);
     
-    emit DebugJoin(portfolio.assets[0].tokenAddress, portfolio.assets[0].amount, challenge.totalRewards);
-    emit Join(challengeId, msg.sender, challenge.seedMoney);
+    emit Join(challengeId, msg.sender, challenge.seedMoney);    
   }
 
   // Swap assets within a challenge portfolio
@@ -299,6 +306,7 @@ contract Stele {
     // Validate assets
     require(isInvestable[from], "IF");
     require(isInvestable[to], "ITO");
+    require(from != to, "ST"); // Prevent same token swap
     
     // Get user portfolio
     UserPortfolio storage portfolio = challenge.portfolios[msg.sender];
@@ -324,28 +332,33 @@ contract Stele {
 
     uint256 fromPriceUSD = getTokenPrice(from, uint128(1 * 10 ** fromTokenDecimals), usdToken);
     uint256 toPriceUSD = getTokenPrice(to, uint128(1 * 10 ** toTokenDecimals), usdToken);
-    
-    require(amount * fromPriceUSD >= toPriceUSD);
+        
+    // Validate that prices are available
+    require(fromPriceUSD > 0, "FP0");
+    require(toPriceUSD > 0, "TP0");
     
     // Calculate swap amount with decimal adjustment
-    uint256 toAmount;
-    if (toTokenDecimals >= fromTokenDecimals) {
-        // When to token has larger decimals (e.g., USDC(6) -> BTC(8))
-        toAmount = amount * fromPriceUSD * (10 ** (toTokenDecimals - fromTokenDecimals)) / toPriceUSD;
-    } else {
-        // When from token has larger decimals (e.g., BTC(8) -> USDC(6))
-        toAmount = amount * fromPriceUSD / (10 ** (fromTokenDecimals - toTokenDecimals)) / toPriceUSD;
+    uint256 toAmount = safeDiv(safeMul(amount, fromPriceUSD), toPriceUSD);
+    
+    // Adjust for decimal differences
+    if (toTokenDecimals > fromTokenDecimals) {
+      toAmount = safeMul(toAmount, 10 ** (toTokenDecimals - fromTokenDecimals));
+    } else if (fromTokenDecimals > toTokenDecimals) {
+      toAmount = safeDiv(toAmount, 10 ** (fromTokenDecimals - toTokenDecimals));
     }
     
+    // Ensure swap amount is not zero
+    require(toAmount > 0, "TA0");
+    
     // Update source asset
-    portfolio.assets[index].amount -= amount;
+    portfolio.assets[index].amount = safeSub(portfolio.assets[index].amount, amount);
     
     // Add or update target asset
     bool foundTarget = false;
 
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
       if (portfolio.assets[i].tokenAddress == to) {
-        portfolio.assets[i].amount += toAmount;
+        portfolio.assets[i].amount = safeAdd(portfolio.assets[i].amount, toAmount);
         foundTarget = true;
         break;
       }
@@ -361,7 +374,10 @@ contract Stele {
     
     // Remove asset if balance is zero
     if (portfolio.assets[index].amount == 0) {
-      portfolio.assets[index] = portfolio.assets[portfolio.assets.length - 1];
+      // Only reorganize array if not already the last element
+      if (index != portfolio.assets.length - 1) {
+        portfolio.assets[index] = portfolio.assets[portfolio.assets.length - 1];
+      }
       portfolio.assets.pop();
     }
 
@@ -384,8 +400,8 @@ contract Stele {
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
       uint8 _tokenDecimals = IERC20Minimal(portfolio.assets[i].tokenAddress).decimals();
       uint256 assetPriceUSD = getTokenPrice(portfolio.assets[i].tokenAddress, uint128(1 * 10 ** _tokenDecimals), usdToken);
-      uint256 assetValueUSD = (portfolio.assets[i].amount / 10 ** _tokenDecimals) * assetPriceUSD;
-      userScore += assetValueUSD;
+      uint256 assetValueUSD = safeDiv(safeMul(portfolio.assets[i].amount, assetPriceUSD), 10 ** _tokenDecimals);
+      userScore = safeAdd(userScore, assetValueUSD);
     }
     
     // Update ranking
@@ -394,61 +410,59 @@ contract Stele {
     // Mark position as closed
     challenge.isClosed[msg.sender] = true;
     
-    emit Register(challengeId, msg.sender, userScore);
+    emit Register(challengeId, msg.sender, userScore);    
   }
 
-  // Helper function to update top performers
+  // Helper function to update top performers (optimized)
   function updateRanking(uint256 challengeId, address user, uint256 userScore) internal {
     Challenge storage challenge = challenges[challengeId];
     
     // Check if user is already in top performers
-    bool isAlreadyTop = false;
-    uint256 existingIndex;
+    int256 existingIndex = -1;
     
     for (uint256 i = 0; i < 10; i++) {
       if (challenge.topUsers[i] == user) {
-        isAlreadyTop = true;
-        existingIndex = i;
+        existingIndex = int256(i);
         break;
       }
     }
     
-    if (isAlreadyTop) {
-      // Update existing entry
-      challenge.score[existingIndex] = userScore;
+    if (existingIndex >= 0) {
+      // User already exists - remove and reinsert
+      uint256 idx = uint256(existingIndex);
       
-      // Re-sort if needed
-      for (uint256 i = existingIndex; i > 0; i--) {
-        if (challenge.score[i] > challenge.score[i-1]) {
-          // Swap positions
-          (challenge.topUsers[i], challenge.topUsers[i-1]) = 
-              (challenge.topUsers[i-1], challenge.topUsers[i]);
-          (challenge.score[i], challenge.score[i-1]) = 
-              (challenge.score[i-1], challenge.score[i]);
-        } else {
-          break;
-        }
+      // Shift elements to remove current position
+      for (uint256 i = idx; i < 9; i++) {
+        challenge.topUsers[i] = challenge.topUsers[i + 1];
+        challenge.score[i] = challenge.score[i + 1];
       }
-    } else {
-      // Check if totalValue is higher than the lowest in top 10
-      if (challenge.topUsers[9] == address(0) || userScore > challenge.score[9]) {
-        // Replace the last entry
-        challenge.topUsers[9] = user;
-        challenge.score[9] = userScore;
-        
-        // Bubble up to correct position
-        for (uint256 i = 9; i > 0; i--) {
-          if (challenge.score[i] > challenge.score[i-1]) {
-            // Swap positions
-            (challenge.topUsers[i], challenge.topUsers[i-1]) = 
-                (challenge.topUsers[i-1], challenge.topUsers[i]);
-            (challenge.score[i], challenge.score[i-1]) = 
-                (challenge.score[i-1], challenge.score[i]);
-          } else {
-            break;
-          }
-        }
+      
+      // Clear last position
+      challenge.topUsers[9] = address(0);
+      challenge.score[9] = 0;
+    }
+    
+    // Find insertion position using binary search concept (for sorted array)
+    uint256 insertPos = 10; // Default: not in top 10
+    
+    for (uint256 i = 0; i < 10; i++) {
+      if (challenge.topUsers[i] == address(0) || userScore > challenge.score[i]) {
+        insertPos = i;
+        break;
       }
+    }
+    
+    // Insert if position found
+    if (insertPos < 10) {
+      // Shift elements to make space
+      for (uint256 i = 9; i > insertPos; i--) {
+        challenge.topUsers[i] = challenge.topUsers[i - 1];
+        challenge.score[i] = challenge.score[i - 1];
+      }
+      
+      // Insert new entry
+      challenge.topUsers[insertPos] = user;
+      challenge.score[insertPos] = userScore;
     }
   }
   
@@ -461,12 +475,25 @@ contract Stele {
   }
 
   // Claim rewards after challenge ends
-  function getRewards(uint256 challengeId) external onlyOwner {
+  function getRewards(uint256 challengeId) external {
     Challenge storage challenge = challenges[challengeId];
-    
     // Validate challenge
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp >= challenge.endTime, "NE");
+    require(!rewardsDistributed[challengeId], "AD");
+    
+    // Check if caller is in top 5 rankers
+    bool isTopRanker = false;
+    for (uint8 i = 0; i < 5; i++) {
+      if (challenge.topUsers[i] == msg.sender) {
+        isTopRanker = true;
+        break;
+      }
+    }
+    require(isTopRanker, "NT5");
+
+    // Mark as distributed first to prevent reentrancy
+    rewardsDistributed[challengeId] = true;
     
     // Rewards distribution to top 5 participants
     uint256 undistributed = challenge.totalRewards;
@@ -474,7 +501,7 @@ contract Stele {
     
     // Check USD token balance of the contract
     uint256 balance = usdTokenContract.balanceOf(address(this));
-    require(balance > undistributed, "NBR");
+    require(balance >= undistributed, "NBR");
     
     // Calculate actual ranker count and initial rewards
     uint8 actualRankerCount = 0;
@@ -487,7 +514,7 @@ contract Stele {
       if (userAddress != address(0)) {
         validRankers[actualRankerCount] = userAddress;
         initialRewards[actualRankerCount] = rewardRatio[i];
-        totalInitialRewardWeight += rewardRatio[i];
+        totalInitialRewardWeight = safeAdd(totalInitialRewardWeight, rewardRatio[i]);
         actualRankerCount++;
       }
     }
@@ -499,8 +526,9 @@ contract Stele {
         address userAddress = validRankers[i];
         
         // Calculate reward based on original ratio
-        uint256 adjustedRatio = initialRewards[i] * 100 / totalInitialRewardWeight;
-        uint256 rewardAmount = (challenge.totalRewards * adjustedRatio) / 100;
+        require(totalInitialRewardWeight > 0, "IW");
+        uint256 adjustedRatio = safeDiv(safeMul(initialRewards[i], 100), totalInitialRewardWeight);
+        uint256 rewardAmount = safeDiv(safeMul(challenge.totalRewards, adjustedRatio), 100);
         
         // Cannot distribute more than the available balance
         if (rewardAmount > undistributed) {
@@ -508,14 +536,59 @@ contract Stele {
         }
         
         if (rewardAmount > 0) {
+          // Update state before external call (Checks-Effects-Interactions pattern)
+          undistributed = safeSub(undistributed, rewardAmount);
+          
           bool success = usdTokenContract.transfer(userAddress, rewardAmount);
           require(success, "RTF");
-          
-          undistributed -= rewardAmount;
 
           emit Reward(challengeId, userAddress, rewardAmount);
         }
       }
     }
+    
+    // Distribute Stele token bonus to the caller who triggered bonus distribution
+    distributeSteleBonus(challengeId, msg.sender, getRewardsBonus, "RW");
+  }
+
+  function safeAdd(uint256 a, uint256 b) internal pure returns (uint256) {
+    uint256 c = a + b;
+    require(c >= a, "OFA");
+    return c;
+  }
+
+  function safeSub(uint256 a, uint256 b) internal pure returns (uint256) {
+    require(b <= a, "UF");
+    return a - b;
+  }
+
+  function safeMul(uint256 a, uint256 b) internal pure returns (uint256) {
+    if (a == 0) {
+      return 0;
+    }
+    uint256 c = a * b;
+    require(c / a == b, "OFM");
+    return c;
+  }
+
+  function safeDiv(uint256 a, uint256 b) internal pure returns (uint256) {
+    require(b > 0, "DZ");
+    return a / b;
+  }
+
+  // Internal function to distribute Stele token bonus
+  function distributeSteleBonus(uint256 challengeId, address recipient, uint256 amount, string memory action) internal {
+    if (steleToken == address(0) || amount == 0) return;
+    
+    IERC20Minimal steleTokenContract = IERC20Minimal(steleToken);
+    uint256 contractBalance = steleTokenContract.balanceOf(address(this));
+    
+    if (contractBalance >= amount) {
+      bool success = steleTokenContract.transfer(recipient, amount);
+      if (success) {
+        emit SteleTokenBonus(challengeId, recipient, action, amount);
+      }
+    }
+    // Silently fail if insufficient balance - no revert to avoid breaking main functionality
   }
 }

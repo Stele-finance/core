@@ -19,8 +19,7 @@ interface IStele {
   event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 toAmount);
   event Register(uint256 challengeId, address user, uint256 performance);
   event Reward(uint256 challengeId, address user, uint256 rewardAmount);
-  event DebugJoin(address tokenAddress, uint256 amount, uint256 totalRewards);
-  event DebugTokenPrice(address baseToken, uint128 baseAmount, address quoteToken, uint256 quoteAmount);
+  event SteleTokenBonus(uint256 challengeId, address indexed user, string action, uint256 amount);
 
   // Read functions
   function owner() external view returns (address);
@@ -61,8 +60,7 @@ interface IStele {
   function createChallenge(ChallengeType challengeType) external;
   function joinChallenge(uint256 challengeId) external;
   function swap(uint256 challengeId, address from, address to, uint256 amount) external;
-  function register(uint256 challengeId) external;
-  
+  function register(uint256 challengeId) external;  
   // Reward function (onlyOwner)
   function getRewards(uint256 challengeId) external;
 
@@ -70,9 +68,6 @@ interface IStele {
 
   // Ranking function
   function getRanking(uint256 challengeId) external view returns (address[10] memory topUsers, uint256[10] memory scores);
-  
-  // Get specific user's rank and score
-  function getUserRank(uint256 challengeId, address user) external view returns (uint256 rank, uint256 score);
   
   // Get challenge information
   function getChallengeInfo(uint256 challengeId) external view returns (
@@ -85,8 +80,4 @@ interface IStele {
     uint256 entryFee,
     bool isActive
   );
-
-  //TODO : remove for production
-  // Price function
-  function getTokenPrice(address baseToken, uint128 baseAmount, address quoteToken) external returns (uint256);
 } 

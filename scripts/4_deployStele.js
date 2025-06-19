@@ -3,10 +3,11 @@ const { ethers } = require("hardhat");
 async function main() {
   // Base Mainnet
   const usdTokenAddress = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC
-  const timeLockAddress = "0xbA7117E9634aEAEf10166f67eB421BB099e79112";
-  
+  const timeLockAddress = "0x5932498283e3FcDac15602824D5AE71E280b9f4c";
+  const steleTokenAddress = "0x8B1136AeBb8e0FA452AC0d67984B658A852d030f";
+
   const Stele = await ethers.getContractFactory("Stele");
-  const stele = await Stele.deploy(usdTokenAddress);
+  const stele = await Stele.deploy(usdTokenAddress, steleTokenAddress);
   const receipt = await stele.deploymentTransaction().wait();
 
   // get the deployed contract address
