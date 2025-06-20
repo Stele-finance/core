@@ -26,6 +26,7 @@ struct Challenge {
   uint256 totalRewards; // USD Token
   uint256 seedMoney;
   uint256 entryFee;
+  uint8 maxAssets;
   address[10] topUsers; // top 10 users
   uint256[10] score; // score of top 10 users
   mapping(address => UserPortfolio) portfolios;
@@ -69,7 +70,7 @@ contract Stele {
   event SeedMoney(uint256 newSeedMoney);
   event AddToken(address tokenAddress);
   event RemoveToken(address tokenAddress);
-  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee);
+  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee, uint8 maxAssets);
   event Join(uint256 challengeId, address user, uint256 seedMoney);
   event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 toAmount);
   event Register(uint256 challengeId, address user, uint256 performance);
@@ -173,6 +174,12 @@ contract Stele {
 
     isInvestable[tokenAddress] = false;
     emit RemoveToken(tokenAddress);
+  }
+
+  // Max assets setting function
+  function setMaxAssets(uint8 _maxAssets) external onlyOwner {
+    maxAssets = _maxAssets;
+    emit MaxAssets(_maxAssets);
   }
 
   // Get user's portfolio in a specific challenge
@@ -299,6 +306,7 @@ contract Stele {
     challenge.totalRewards = 0;
     challenge.seedMoney = seedMoney;
     challenge.entryFee = entryFee;
+    challenge.maxAssets = maxAssets;
     
     // Initialize top users and their values
     for (uint i = 0; i < 10; i++) {
@@ -306,7 +314,7 @@ contract Stele {
       challenge.score[i] = 0;
     }
     
-    emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee);
+    emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee, challenge.maxAssets);
     
     // Distribute Stele token bonus for creating challenge
     distributeSteleBonus(challengeId, msg.sender, createChallengeBonus, "CR");
@@ -441,7 +449,7 @@ contract Stele {
     }
     
     if (!foundTarget) {
-      require(portfolio.assets.length < maxAssets, "FA");
+      require(portfolio.assets.length < challenge.maxAssets, "FA");
       portfolio.assets.push(Asset({
         tokenAddress: to,
         amount: toAmount
