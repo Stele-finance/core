@@ -14,7 +14,7 @@ interface IStele {
   event SeedMoney(uint256 newSeedMoney);
   event AddToken(address tokenAddress);
   event RemoveToken(address tokenAddress);
-  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee);
+  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee, uint8 maxAssets);
   event Join(uint256 challengeId, address user, uint256 seedMoney);
   event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 toAmount);
   event Register(uint256 challengeId, address user, uint256 performance);
@@ -54,6 +54,7 @@ interface IStele {
   function setEntryFee(uint256 _entryFee) external;
   function setSeedMoney(uint256 _seedMoney) external;
   function setToken(address tokenAddress) external;
+  function setMaxAssets(uint8 _maxAssets) external;
   function resetToken(address tokenAddress) external;
 
   // Challenge management functions

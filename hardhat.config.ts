@@ -26,6 +26,19 @@ const config: HardhatUserConfig = {
     ],
   },
   networks: {
+    hardhat: {
+      chainId: 31337,
+      forking: {
+        url: "https://mainnet.infura.io/v3/" + process.env.INFURA_API_KEY,
+        //blockNumber: 14390000
+      },
+      //allowUnlimitedContractSize: true,
+    },
+    mainnet: {
+      url: "https://mainnet.infura.io/v3/" + process.env.INFURA_API_KEY,
+      accounts: [process.env.PRIVATE_KEY || ""],
+      chainId: 1,
+    },
     base: {
       url: "https://mainnet.base.org",
       chainId: 8453,
@@ -38,7 +51,7 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: {
-      base: process.env.BASE_API_KEY || "",
+      base: process.env.INFURA_API_KEY || "",
     }
   },
   mocha: {
