@@ -3,10 +3,10 @@
 Ethereum Mainnet deploy
 
 ```shell
-nvm use 18
+nvm use 23
 npm install
 npx hardhat compile
-npx hardhat test --network base
+npx hardhat test --network mainnet
 ```
 
 In the root of project, create a file named .env and add the following
