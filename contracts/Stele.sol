@@ -27,8 +27,8 @@ struct Challenge {
   uint256 seedMoney;
   uint256 entryFee;
   uint8 maxAssets;
-  address[10] topUsers; // top 10 users
-  uint256[10] score; // score of top 10 users
+  address[5] topUsers; // top 5 users
+  uint256[5] score; // score of top 5 users
   mapping(address => UserPortfolio) portfolios;
   mapping(address => bool) isClosed;
 }
@@ -52,6 +52,7 @@ contract Stele {
   // Stele Token Bonus System
   address public steleToken;
   uint256 public createChallengeBonus;
+  uint256 public joinChallengeBonus;
   uint256 public getRewardsBonus;
 
   // Challenge repository
@@ -59,8 +60,7 @@ contract Stele {
   uint256 public challengeCounter;
   // Latest challenge ID by challenge type
   mapping(ChallengeType => uint256) public latestChallengesByType;
-  // Rewards distribution tracking
-  mapping(uint256 => bool) public rewardsDistributed;
+
 
   // Event definitions
   event SteleCreated(address owner,address usdToken, uint8 maxAssets, uint256 seedMoney, uint256 entryFee, uint256[5] rewardRatio);
@@ -90,13 +90,14 @@ contract Stele {
     usdTokenDecimals = IERC20Minimal(_usdToken).decimals(); 
     maxAssets = 10;
     seedMoney = 1000 * 10**usdTokenDecimals;
-    entryFee = 10 * 10**usdTokenDecimals;
+    entryFee = 1 * 10**usdTokenDecimals; // 1 USD for initial testing period, default : 10 USD
     rewardRatio = [50, 26, 13, 7, 4];
     challengeCounter = 0;
     // Initialize Stele Token Bonus
     steleToken = _steleToken;
-    createChallengeBonus = 10000 * 10**18; // 10000 STL tokens
-    getRewardsBonus = 500000 * 10**18;     // 500000 STL tokens
+    createChallengeBonus = 1000 * 10**18; // 10000 STL tokens
+    joinChallengeBonus = 500 * 10**18;     // 100000 STL tokens
+    getRewardsBonus = 100000 * 10**18;     // 100000 STL tokens
 
     // Initialize investable tokens directly
     isInvestable[WETH] = true;
@@ -124,13 +125,6 @@ contract Stele {
     return 0;
   }
 
-  // Set USD token function
-  function setUSDToken(address _usdToken) external onlyOwner {
-    require(_usdToken != address(0), "IT");
-    usdToken = _usdToken;
-    usdTokenDecimals = IERC20Minimal(_usdToken).decimals();
-  }
-
   // Reward distribution ratio setting function
   function setRewardRatio(uint256[5] calldata _rewardRatio) external onlyOwner {
     uint256 sum = 0;
@@ -139,6 +133,11 @@ contract Stele {
         sum += _rewardRatio[i];
     }
     require(sum == 100, "IS");
+    
+    // Ensure reward ratio is in descending order (1st > 2nd > 3rd > 4th > 5th)
+    for (uint i = 0; i < 4; i++) {
+        require(_rewardRatio[i] > _rewardRatio[i + 1], "RD"); // Reward ratio must be Descending
+    }
     
     rewardRatio = _rewardRatio;
     emit RewardRatio(_rewardRatio);
@@ -187,7 +186,7 @@ contract Stele {
     Challenge storage challenge = challenges[challengeId];
     require(challenge.startTime > 0, "CNE");
     
-    UserPortfolio storage portfolio = challenge.portfolios[user];
+    UserPortfolio memory portfolio = challenge.portfolios[user];
     uint256 assetCount = portfolio.assets.length;
     
     tokenAddresses = new address[](assetCount);
@@ -288,8 +287,7 @@ contract Stele {
     uint256 latestChallengeId = latestChallengesByType[challengeType];
     // Only allow creating a new challenge if it's the first challenge or the previous challenge has ended
     if (latestChallengeId != 0) {
-      Challenge storage latestChallenge = challenges[latestChallengeId];
-      require(block.timestamp > latestChallenge.endTime, "NE");
+      require(block.timestamp > challenges[latestChallengeId].endTime, "NE");
     }
 
     challengeCounter++;
@@ -309,7 +307,7 @@ contract Stele {
     challenge.maxAssets = maxAssets;
     
     // Initialize top users and their values
-    for (uint i = 0; i < 10; i++) {
+    for (uint i = 0; i < 5; i++) {
       challenge.topUsers[i] = address(0);
       challenge.score[i] = 0;
     }
@@ -359,7 +357,10 @@ contract Stele {
     // Update challenge total rewards
     challenge.totalRewards = safeAdd(challenge.totalRewards, entryFee);
     
-    emit Join(challengeId, msg.sender, challenge.seedMoney);    
+    emit Join(challengeId, msg.sender, challenge.seedMoney);  
+
+    // Distribute Stele token bonus for joining challenge
+    distributeSteleBonus(challengeId, msg.sender, joinChallengeBonus, "JCR");  
   }
 
   // Swap assets within a challenge portfolio
@@ -373,6 +374,7 @@ contract Stele {
     
     // Validate assets
     require(from != to, "ST"); // Prevent same token swap
+    require(isInvestable[to], "IT"); // Not investableToken
     
     // Get user portfolio
     UserPortfolio storage portfolio = challenge.portfolios[msg.sender];
@@ -481,11 +483,13 @@ contract Stele {
     uint256 userScore = 0;
     uint256 ethPriceUSD = getETHPriceUSD(); // Get ETH price once for efficiency
     
-    UserPortfolio storage portfolio = challenge.portfolios[msg.sender];
+    UserPortfolio memory portfolio = challenge.portfolios[msg.sender];
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
       address tokenAddress = portfolio.assets[i].tokenAddress;
       uint8 _tokenDecimals = IERC20Minimal(tokenAddress).decimals();
-      
+
+      if(!isInvestable[tokenAddress]) continue;
+
       uint256 assetPriceUSD;
       if (tokenAddress == usdToken) {
         assetPriceUSD = 1 * 10 ** usdTokenDecimals;
@@ -516,7 +520,7 @@ contract Stele {
     // Check if user is already in top performers
     int256 existingIndex = -1;
     
-    for (uint256 i = 0; i < 10; i++) {
+    for (uint256 i = 0; i < 5; i++) {
       if (challenge.topUsers[i] == user) {
         existingIndex = int256(i);
         break;
@@ -528,20 +532,20 @@ contract Stele {
       uint256 idx = uint256(existingIndex);
       
       // Shift elements to remove current position
-      for (uint256 i = idx; i < 9; i++) {
+      for (uint256 i = idx; i < 4; i++) {
         challenge.topUsers[i] = challenge.topUsers[i + 1];
         challenge.score[i] = challenge.score[i + 1];
       }
       
       // Clear last position
-      challenge.topUsers[9] = address(0);
-      challenge.score[9] = 0;
+      challenge.topUsers[4] = address(0);
+      challenge.score[4] = 0;
     }
     
     // Find insertion position using binary search concept (for sorted array)
-    uint256 insertPos = 10; // Default: not in top 10
+    uint256 insertPos = 5; // Default: not in top 5
     
-    for (uint256 i = 0; i < 10; i++) {
+    for (uint256 i = 0; i < 5; i++) {
       if (challenge.topUsers[i] == address(0) || userScore > challenge.score[i]) {
         insertPos = i;
         break;
@@ -549,9 +553,9 @@ contract Stele {
     }
     
     // Insert if position found
-    if (insertPos < 10) {
+    if (insertPos < 5) {
       // Shift elements to make space
-      for (uint256 i = 9; i > insertPos; i--) {
+      for (uint256 i = 4; i > insertPos; i--) {
         challenge.topUsers[i] = challenge.topUsers[i - 1];
         challenge.score[i] = challenge.score[i - 1];
       }
@@ -562,13 +566,16 @@ contract Stele {
     }
   }
   
-  function getRanking(uint256 challengeId) external view returns (address[10] memory topUsers, uint256[10] memory scores) {
+  function getRanking(uint256 challengeId) external view returns (address[5] memory topUsers, uint256[5] memory scores) {
     Challenge storage challenge = challenges[challengeId];
-    for (uint256 i = 0; i < 10; i++) {
+    for (uint256 i = 0; i < 5; i++) {
       topUsers[i] = challenge.topUsers[i];
       scores[i] = challenge.score[i];
     }
   }
+
+  // Rewards distribution tracking
+  mapping(uint256 => bool) public rewardsDistributed;
 
   // Claim rewards after challenge ends
   function getRewards(uint256 challengeId) external {
@@ -673,9 +680,7 @@ contract Stele {
   }
 
   // Internal function to distribute Stele token bonus
-  function distributeSteleBonus(uint256 challengeId, address recipient, uint256 amount, string memory action) internal {
-    if (steleToken == address(0) || amount == 0) return;
-    
+  function distributeSteleBonus(uint256 challengeId, address recipient, uint256 amount, string memory action) internal {    
     IERC20Minimal steleTokenContract = IERC20Minimal(steleToken);
     uint256 contractBalance = steleTokenContract.balanceOf(address(this));
     
