@@ -43,15 +43,20 @@ const config: HardhatUserConfig = {
       url: "https://mainnet.base.org",
       chainId: 8453,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
-      timeout: 60000,
       httpHeaders: {
         "User-Agent": "Hardhat"
       }
+    },
+    arbitrum: {
+      url: "https://arbitrum-mainnet.infura.io/v3/" + process.env.INFURA_API_KEY,
+      chainId: 42161,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     },
   },
   etherscan: {
     apiKey: {
       base: process.env.INFURA_API_KEY || "",
+      arbitrumOne: process.env.ARBISCAN_API_KEY || "",
     }
   },
   mocha: {
