@@ -30,7 +30,7 @@ struct Challenge {
   address[5] topUsers; // top 5 users
   uint256[5] score; // score of top 5 users
   mapping(address => UserPortfolio) portfolios;
-  mapping(address => bool) isClosed;
+  mapping(address => bool) isRegistered;
 }
 
 contract Stele {
@@ -253,35 +253,6 @@ contract Stele {
     return quoteAmount;
   }
 
-  // Token price query function using Uniswap V3 pool
-  // Get Token A price from Token B
-  function getTokenPrice(address baseToken, uint128 baseAmount, address quoteToken) internal view returns (uint256) {
-    if (baseToken == quoteToken) return baseAmount;
-    
-    uint16[3] memory fees = [500, 3000, 10000];
-    uint256 quoteAmount = 0;
-
-    for (uint256 i=0; i<fees.length; i++) {
-      address pool = IUniswapV3Factory(uniswapV3Factory).getPool(baseToken, quoteToken, uint24(fees[i]));
-      if (pool == address(0)) {
-          continue;
-      }
-
-      uint32 secondsAgo = OracleLibrary.getOldestObservationSecondsAgo(pool);
-      uint32 maxSecondsAgo = 1800;
-      secondsAgo = secondsAgo > maxSecondsAgo ? maxSecondsAgo : secondsAgo;
-
-      (int24 tick, ) = OracleLibrary.consult(address(pool), secondsAgo);
-      uint256 _quoteAmount = OracleLibrary.getQuoteAtTick(tick, baseAmount, baseToken, quoteToken);
-      
-      if (quoteAmount < _quoteAmount) {
-        quoteAmount = _quoteAmount;
-      }
-    }
-
-    return quoteAmount;
-  }
-
   // Create a new challenge
   function createChallenge(ChallengeType challengeType) external {
     uint256 latestChallengeId = latestChallengesByType[challengeType];
@@ -325,7 +296,7 @@ contract Stele {
     // Check if challenge exists and is still active
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp < challenge.endTime, "E");
-    require(!challenge.isClosed[msg.sender], "C");
+    require(!challenge.isRegistered[msg.sender], "C");
     
     // Check if user has already joined
     require(challenge.portfolios[msg.sender].assets.length == 0, "AJ");
@@ -370,7 +341,7 @@ contract Stele {
     // Validate challenge and user
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp < challenge.endTime, "E");
-    require(!challenge.isClosed[msg.sender], "C");
+    require(!challenge.isRegistered[msg.sender], "C");
     
     // Validate assets
     require(from != to, "ST"); // Prevent same token swap
@@ -477,7 +448,7 @@ contract Stele {
     // Validate challenge and user
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp < challenge.endTime, "E");
-    require(!challenge.isClosed[msg.sender], "C");
+    require(!challenge.isRegistered[msg.sender], "C");
     
     // Calculate total portfolio value USD using ETH as intermediate
     uint256 userScore = 0;
@@ -508,7 +479,7 @@ contract Stele {
     updateRanking(challengeId, msg.sender, userScore);
     
     // Mark position as closed
-    challenge.isClosed[msg.sender] = true;
+    challenge.isRegistered[msg.sender] = true;
     
     emit Register(challengeId, msg.sender, userScore);    
   }
