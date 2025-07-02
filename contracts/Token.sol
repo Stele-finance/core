@@ -13,7 +13,7 @@ contract Token is ERC20, ERC20Permit, ERC20Votes {
     
     // Set total supply in constructor and finish minting
     constructor() ERC20("Stele", "STL") ERC20Permit("Stele") {
-        _mint(msg.sender, 1000000000 * 10**18);
+        _mint(msg.sender, 100000000 * 10**18);
         _finishMinting();
     }
 
