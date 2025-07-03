@@ -6,8 +6,8 @@ async function main() {
   console.log("Account balance:", (await ethers.provider.getBalance(deployer.address)).toString());
 
   // Arbitrum
-  const tokenAddress = "0x6BE212Ea54749297710A0BC15991CDf3B6e7923A";
-  const timeLockAddress = "0x4a31eBF27F7Bd63A116f331f58052b3fA732F487";
+  const tokenAddress = "0x5763a0523A672d7c88127e10533bA78853454510";
+  const timeLockAddress = "0x9Ce9a6fC0d94697797581dc5Fb6aAb7e923FD977";
   // Governor values
   const QUORUM_PERCENTAGE = 4; // 4%
   const VOTING_PERIOD = 272; // 1 hour for initial testing period, default : 7 days (45818 blocks)

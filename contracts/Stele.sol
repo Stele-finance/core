@@ -37,11 +37,11 @@ contract Stele {
 
   // Base Mainnet
   address public uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
-  address public WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
   // State variables
   address public owner;
   address public usdToken;
+  address public wethToken;
   uint8 public usdTokenDecimals;
   uint8 public maxAssets;
   uint256 public seedMoney;
@@ -52,7 +52,6 @@ contract Stele {
   // Stele Token Bonus System
   address public steleToken;
   uint256 public createChallengeBonus;
-  uint256 public joinChallengeBonus;
   uint256 public getRewardsBonus;
 
   // Challenge repository
@@ -84,9 +83,10 @@ contract Stele {
   }
   
   // Contract constructor
-  constructor(address _usdToken, address _steleToken) {
+  constructor(address _wethToken, address _usdToken, address _steleToken) {
     owner = msg.sender;
     usdToken = _usdToken;
+    wethToken = _wethToken;
     usdTokenDecimals = IERC20Minimal(_usdToken).decimals(); 
     maxAssets = 10;
     seedMoney = 1000 * 10**usdTokenDecimals;
@@ -96,12 +96,11 @@ contract Stele {
     // Initialize Stele Token Bonus
     steleToken = _steleToken;
     createChallengeBonus = 1000 * 10**18; // 10000 STL tokens
-    joinChallengeBonus = 500 * 10**18;     // 100000 STL tokens
     getRewardsBonus = 100000 * 10**18;     // 100000 STL tokens
 
     // Initialize investable tokens directly
-    isInvestable[WETH] = true;
-    emit AddToken(WETH);
+    isInvestable[wethToken] = true;
+    emit AddToken(wethToken);
     isInvestable[usdToken] = true;
     emit AddToken(usdToken);
 
@@ -169,7 +168,7 @@ contract Stele {
     require(tokenAddress != address(0), "ZA"); // Zero Address
     require(isInvestable[tokenAddress], "NT"); // Not investableToken
     require(tokenAddress != usdToken, "UCR"); // USD token Cannot be Removed
-    require(tokenAddress != WETH, "WCR"); // WETH Cannot be Removed
+    require(tokenAddress != wethToken, "WCR"); // WETH Cannot be Removed
 
     isInvestable[tokenAddress] = false;
     emit RemoveToken(tokenAddress);
@@ -206,7 +205,7 @@ contract Stele {
     uint256 quoteAmount = 0;
 
     for (uint256 i=0; i<fees.length; i++) {
-      address pool = IUniswapV3Factory(uniswapV3Factory).getPool(WETH, usdToken, uint24(fees[i]));
+      address pool = IUniswapV3Factory(uniswapV3Factory).getPool(wethToken, usdToken, uint24(fees[i]));
       if (pool == address(0)) {
           continue;
       }
@@ -216,7 +215,7 @@ contract Stele {
       secondsAgo = secondsAgo > maxSecondsAgo ? maxSecondsAgo : secondsAgo;
 
       (int24 tick, ) = OracleLibrary.consult(address(pool), secondsAgo);
-      uint256 _quoteAmount = OracleLibrary.getQuoteAtTick(tick, uint128(1 * 10**18), WETH, usdToken);
+      uint256 _quoteAmount = OracleLibrary.getQuoteAtTick(tick, uint128(1 * 10**18), wethToken, usdToken);
       
       if (quoteAmount < _quoteAmount) {
         quoteAmount = _quoteAmount;
@@ -228,7 +227,7 @@ contract Stele {
 
   // Get token price in ETH
   function getTokenPriceETH(address baseToken, uint128 baseAmount) internal view returns (uint256) { 
-    address quoteToken = WETH;
+    address quoteToken = wethToken;
     uint16[3] memory fees = [500, 3000, 10000];
     uint256 quoteAmount = 0;
 
@@ -329,9 +328,6 @@ contract Stele {
     challenge.totalRewards = safeAdd(challenge.totalRewards, entryFee);
     
     emit Join(challengeId, msg.sender, challenge.seedMoney);  
-
-    // Distribute Stele token bonus for joining challenge
-    distributeSteleBonus(challengeId, msg.sender, joinChallengeBonus, "JCR");  
   }
 
   // Swap assets within a challenge portfolio
@@ -375,7 +371,7 @@ contract Stele {
     // Calculate fromPriceUSD using ETH as intermediate
     if (from == usdToken) {
       fromPriceUSD = 1 * 10 ** usdTokenDecimals;
-    } else if (from == WETH) {
+    } else if (from == wethToken) {
       fromPriceUSD = getETHPriceUSD();
     } else {
       fromPriceUSD = safeDiv(safeMul(getTokenPriceETH(from, uint128(1 * 10 ** fromTokenDecimals)), getETHPriceUSD()), 10 ** 18);
@@ -384,7 +380,7 @@ contract Stele {
     // Calculate toPriceUSD using ETH as intermediate
     if (to == usdToken) {
       toPriceUSD = 1 * 10 ** usdTokenDecimals;
-    } else if (to == WETH) {
+    } else if (to == wethToken) {
       toPriceUSD = getETHPriceUSD();
     } else {
       toPriceUSD = safeDiv(safeMul(getTokenPriceETH(to, uint128(1 * 10 ** toTokenDecimals)), getETHPriceUSD()), 10 ** 18);
@@ -464,7 +460,7 @@ contract Stele {
       uint256 assetPriceUSD;
       if (tokenAddress == usdToken) {
         assetPriceUSD = 1 * 10 ** usdTokenDecimals;
-      } else if (tokenAddress == WETH) {
+      } else if (tokenAddress == wethToken) {
         assetPriceUSD = ethPriceUSD;
       } else {
         uint256 assetPriceETH = getTokenPriceETH(tokenAddress, uint128(1 * 10 ** _tokenDecimals));
