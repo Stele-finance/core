@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 ## Project Overview
 
 This is the Stele DeFi protocol - a decentralized investment challenge platform where users can participate in timed portfolio management competitions. The system allows users to join challenges, swap assets within virtual portfolios, compete for rankings, and mint performance NFTs as soulbound tokens.

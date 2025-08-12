@@ -14,7 +14,7 @@ interface IStele {
   event SeedMoney(uint256 newSeedMoney);
   event AddToken(address tokenAddress);
   event RemoveToken(address tokenAddress);
-  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee, uint8 maxAssets);
+  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee);
   event Join(uint256 challengeId, address user, uint256 seedMoney);
   event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 toAmount);
   event Register(uint256 challengeId, address user, uint256 performance);
@@ -67,17 +67,7 @@ interface IStele {
   function getUserPortfolio(uint256 challengeId, address user) external view returns (address[] memory tokenAddresses, uint256[] memory amounts);
 
   // Ranking function
-  function getRanking(uint256 challengeId) external view returns (address[10] memory topUsers, uint256[10] memory scores);
+  function getRanking(uint256 challengeId) external view returns (address[5] memory topUsers, uint256[5] memory scores);
   
-  // Get challenge information
-  function getChallengeInfo(uint256 challengeId) external view returns (
-    uint256 id,
-    ChallengeType challengeType,
-    uint256 startTime,
-    uint256 endTime,
-    uint256 totalRewards,
-    uint256 seedMoney,
-    uint256 entryFee,
-    bool isActive
-  );
+  function mintPerformanceNFT(uint256 challengeId) external;
 } 

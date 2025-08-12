@@ -5,6 +5,7 @@ pragma abicoder v2;
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 import '@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol';
 import './interfaces/IERC20Minimal.sol';
+import './libraries/SafeMath.sol';
 
 // Challenge type definition
 enum ChallengeType { OneWeek, OneMonth, ThreeMonths, SixMonths, OneYear }
@@ -26,26 +27,44 @@ struct Challenge {
   uint256 totalRewards; // USD Token
   uint256 seedMoney;
   uint256 entryFee;
-  uint8 maxAssets;
+  uint32 totalUsers;
   address[5] topUsers; // top 5 users
   uint256[5] score; // score of top 5 users
   mapping(address => UserPortfolio) portfolios;
   mapping(address => bool) isRegistered;
 }
 
+// Interface for StelePerformanceNFT contract
+interface IStelePerformanceNFT {
+  function mintPerformanceNFT(
+    uint256 challengeId,
+    address user,
+    uint32 totalUsers,
+    uint256 finalScore,
+    uint8 rank,
+    uint256 initialValue,
+    ChallengeType challengeType,
+    uint256 challengeStartTime
+  ) external returns (uint256);
+  
+  function canMintNFT(uint256 challengeId, address user) external view returns (bool);
+}
+
 contract Stele {
+  // Use libraries
+  using SafeMath for uint256;
 
   // Base Mainnet
   address public uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
-  address public WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
   // State variables
   address public owner;
   address public usdToken;
-  uint8 public usdTokenDecimals;
-  uint8 public maxAssets;
+  address public wethToken;
   uint256 public seedMoney;
   uint256 public entryFee;
+  uint8 public usdTokenDecimals;
+  uint8 public maxAssets;
   uint256[5] public rewardRatio;
   mapping(address => bool) public isInvestable;
 
@@ -61,6 +80,9 @@ contract Stele {
   // Latest challenge ID by challenge type
   mapping(ChallengeType => uint256) public latestChallengesByType;
 
+  // NFT contract address
+  address public performanceNFTContract;
+
 
   // Event definitions
   event SteleCreated(address owner,address usdToken, uint8 maxAssets, uint256 seedMoney, uint256 entryFee, uint256[5] rewardRatio);
@@ -70,13 +92,14 @@ contract Stele {
   event SeedMoney(uint256 newSeedMoney);
   event AddToken(address tokenAddress);
   event RemoveToken(address tokenAddress);
-  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee, uint8 maxAssets);
+  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee);
   event Join(uint256 challengeId, address user, uint256 seedMoney);
   event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 toAmount);
   event Register(uint256 challengeId, address user, uint256 performance);
   event Reward(uint256 challengeId, address user, uint256 rewardAmount);
   event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
   event SteleTokenBonus(uint256 challengeId, address indexed user, string action, uint256 amount);
+  event PerformanceNFTContractSet(address indexed nftContract);
 
   modifier onlyOwner() {
       require(msg.sender == owner, 'NO');
@@ -84,24 +107,25 @@ contract Stele {
   }
   
   // Contract constructor
-  constructor(address _usdToken, address _steleToken) {
+  constructor(address _wethToken, address _usdToken, address _steleToken) {
     owner = msg.sender;
     usdToken = _usdToken;
+    wethToken = _wethToken;
     usdTokenDecimals = IERC20Minimal(_usdToken).decimals(); 
     maxAssets = 10;
     seedMoney = 1000 * 10**usdTokenDecimals;
-    entryFee = 1 * 10**usdTokenDecimals; // 1 USD for initial testing period, default : 10 USD
+    entryFee = 10 * 10**usdTokenDecimals; // 10 USD
     rewardRatio = [50, 26, 13, 7, 4];
     challengeCounter = 0;
     // Initialize Stele Token Bonus
     steleToken = _steleToken;
     createChallengeBonus = 1000 * 10**18; // 10000 STL tokens
-    joinChallengeBonus = 500 * 10**18;     // 100000 STL tokens
-    getRewardsBonus = 100000 * 10**18;     // 100000 STL tokens
+    joinChallengeBonus = 500 * 10**18; // 500 STL tokens
+    getRewardsBonus = 100000 * 10**18; // 100000 STL tokens
 
     // Initialize investable tokens directly
-    isInvestable[WETH] = true;
-    emit AddToken(WETH);
+    isInvestable[wethToken] = true;
+    emit AddToken(wethToken);
     isInvestable[usdToken] = true;
     emit AddToken(usdToken);
 
@@ -113,6 +137,13 @@ contract Stele {
     require(newOwner != address(0), "NZ");
     emit OwnershipTransferred(owner, newOwner);
     owner = newOwner;
+  }
+
+  // Set Performance NFT contract address
+  function setPerformanceNFTContract(address _nftContract) external onlyOwner {
+    require(_nftContract != address(0), "NZ");
+    performanceNFTContract = _nftContract;
+    emit PerformanceNFTContractSet(_nftContract);
   }
 
   // Duration in seconds for each challenge type
@@ -169,7 +200,7 @@ contract Stele {
     require(tokenAddress != address(0), "ZA"); // Zero Address
     require(isInvestable[tokenAddress], "NT"); // Not investableToken
     require(tokenAddress != usdToken, "UCR"); // USD token Cannot be Removed
-    require(tokenAddress != WETH, "WCR"); // WETH Cannot be Removed
+    require(tokenAddress != wethToken, "WCR"); // WETH Cannot be Removed
 
     isInvestable[tokenAddress] = false;
     emit RemoveToken(tokenAddress);
@@ -206,7 +237,7 @@ contract Stele {
     uint256 quoteAmount = 0;
 
     for (uint256 i=0; i<fees.length; i++) {
-      address pool = IUniswapV3Factory(uniswapV3Factory).getPool(WETH, usdToken, uint24(fees[i]));
+      address pool = IUniswapV3Factory(uniswapV3Factory).getPool(wethToken, usdToken, uint24(fees[i]));
       if (pool == address(0)) {
           continue;
       }
@@ -216,7 +247,7 @@ contract Stele {
       secondsAgo = secondsAgo > maxSecondsAgo ? maxSecondsAgo : secondsAgo;
 
       (int24 tick, ) = OracleLibrary.consult(address(pool), secondsAgo);
-      uint256 _quoteAmount = OracleLibrary.getQuoteAtTick(tick, uint128(1 * 10**18), WETH, usdToken);
+      uint256 _quoteAmount = OracleLibrary.getQuoteAtTick(tick, uint128(1 * 10**18), wethToken, usdToken);
       
       if (quoteAmount < _quoteAmount) {
         quoteAmount = _quoteAmount;
@@ -228,7 +259,7 @@ contract Stele {
 
   // Get token price in ETH
   function getTokenPriceETH(address baseToken, uint128 baseAmount) internal view returns (uint256) { 
-    address quoteToken = WETH;
+    address quoteToken = wethToken;
     uint16[3] memory fees = [500, 3000, 10000];
     uint256 quoteAmount = 0;
 
@@ -275,7 +306,7 @@ contract Stele {
     challenge.totalRewards = 0;
     challenge.seedMoney = seedMoney;
     challenge.entryFee = entryFee;
-    challenge.maxAssets = maxAssets;
+    challenge.totalUsers = 0;
     
     // Initialize top users and their values
     for (uint i = 0; i < 5; i++) {
@@ -283,7 +314,7 @@ contract Stele {
       challenge.score[i] = 0;
     }
     
-    emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee, challenge.maxAssets);
+    emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee);
     
     // Distribute Stele token bonus for creating challenge
     distributeSteleBonus(challengeId, msg.sender, createChallengeBonus, "CR");
@@ -305,13 +336,13 @@ contract Stele {
     IERC20Minimal usdTokenContract = IERC20Minimal(usdToken);
     
     // First check if user has enough tokens
-    require(usdTokenContract.balanceOf(msg.sender) >= entryFee, "NEB");
+    require(usdTokenContract.balanceOf(msg.sender) >= challenge.entryFee, "NEB");
     
     // Check if user has approved the contract to transfer tokens
-    require(usdTokenContract.allowance(msg.sender, address(this)) >= entryFee, "NA");
+    require(usdTokenContract.allowance(msg.sender, address(this)) >= challenge.entryFee, "NA");
     
     // Transfer tokens
-    bool transferSuccess = usdTokenContract.transferFrom(msg.sender, address(this), entryFee);
+    bool transferSuccess = usdTokenContract.transferFrom(msg.sender, address(this), challenge.entryFee);
     require(transferSuccess, "TF");
     
     // Add user to challenge
@@ -326,12 +357,13 @@ contract Stele {
     portfolio.assets.push(initialAsset);
     
     // Update challenge total rewards
-    challenge.totalRewards = safeAdd(challenge.totalRewards, entryFee);
-    
-    emit Join(challengeId, msg.sender, challenge.seedMoney);  
+    challenge.totalRewards = SafeMath.safeAdd(challenge.totalRewards, challenge.entryFee);
+    challenge.totalUsers = uint32(SafeMath.safeAdd(challenge.totalUsers, 1));
+
+    emit Join(challengeId, msg.sender, challenge.seedMoney);
 
     // Distribute Stele token bonus for joining challenge
-    distributeSteleBonus(challengeId, msg.sender, joinChallengeBonus, "JCR");  
+    distributeSteleBonus(challengeId, msg.sender, joinChallengeBonus, "JCR");
   }
 
   // Swap assets within a challenge portfolio
@@ -375,19 +407,19 @@ contract Stele {
     // Calculate fromPriceUSD using ETH as intermediate
     if (from == usdToken) {
       fromPriceUSD = 1 * 10 ** usdTokenDecimals;
-    } else if (from == WETH) {
+    } else if (from == wethToken) {
       fromPriceUSD = getETHPriceUSD();
     } else {
-      fromPriceUSD = safeDiv(safeMul(getTokenPriceETH(from, uint128(1 * 10 ** fromTokenDecimals)), getETHPriceUSD()), 10 ** 18);
+      fromPriceUSD = SafeMath.safeDiv(SafeMath.safeMul(getTokenPriceETH(from, uint128(1 * 10 ** fromTokenDecimals)), getETHPriceUSD()), 10 ** 18);
     }
     
     // Calculate toPriceUSD using ETH as intermediate
     if (to == usdToken) {
       toPriceUSD = 1 * 10 ** usdTokenDecimals;
-    } else if (to == WETH) {
+    } else if (to == wethToken) {
       toPriceUSD = getETHPriceUSD();
     } else {
-      toPriceUSD = safeDiv(safeMul(getTokenPriceETH(to, uint128(1 * 10 ** toTokenDecimals)), getETHPriceUSD()), 10 ** 18);
+      toPriceUSD = SafeMath.safeDiv(SafeMath.safeMul(getTokenPriceETH(to, uint128(1 * 10 ** toTokenDecimals)), getETHPriceUSD()), 10 ** 18);
     }
         
     // Validate that prices are available
@@ -395,34 +427,34 @@ contract Stele {
     require(toPriceUSD > 0, "TP0");
 
     // Calculate swap amount with decimal adjustment
-    uint256 toAmount = safeDiv(safeMul(amount, fromPriceUSD), toPriceUSD);
+    uint256 toAmount = SafeMath.safeDiv(SafeMath.safeMul(amount, fromPriceUSD), toPriceUSD);
 
     // Adjust for decimal differences
     if (toTokenDecimals > fromTokenDecimals) {
-      toAmount = safeMul(toAmount, 10 ** (toTokenDecimals - fromTokenDecimals));
+      toAmount = SafeMath.safeMul(toAmount, 10 ** (toTokenDecimals - fromTokenDecimals));
     } else if (fromTokenDecimals > toTokenDecimals) {
-      toAmount = safeDiv(toAmount, 10 ** (fromTokenDecimals - toTokenDecimals));
+      toAmount = SafeMath.safeDiv(toAmount, 10 ** (fromTokenDecimals - toTokenDecimals));
     }
     
     // Ensure swap amount is not zero
     require(toAmount > 0, "TA0");
     
     // Update source asset
-    portfolio.assets[index].amount = safeSub(portfolio.assets[index].amount, amount);
+    portfolio.assets[index].amount = SafeMath.safeSub(portfolio.assets[index].amount, amount);
     
     // Add or update target asset
     bool foundTarget = false;
 
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
       if (portfolio.assets[i].tokenAddress == to) {
-        portfolio.assets[i].amount = safeAdd(portfolio.assets[i].amount, toAmount);
+        portfolio.assets[i].amount = SafeMath.safeAdd(portfolio.assets[i].amount, toAmount);
         foundTarget = true;
         break;
       }
     }
     
     if (!foundTarget) {
-      require(portfolio.assets.length < challenge.maxAssets, "FA");
+      require(portfolio.assets.length < maxAssets, "FA");
       portfolio.assets.push(Asset({
         tokenAddress: to,
         amount: toAmount
@@ -464,15 +496,15 @@ contract Stele {
       uint256 assetPriceUSD;
       if (tokenAddress == usdToken) {
         assetPriceUSD = 1 * 10 ** usdTokenDecimals;
-      } else if (tokenAddress == WETH) {
+      } else if (tokenAddress == wethToken) {
         assetPriceUSD = ethPriceUSD;
       } else {
         uint256 assetPriceETH = getTokenPriceETH(tokenAddress, uint128(1 * 10 ** _tokenDecimals));
-        assetPriceUSD = safeDiv(safeMul(assetPriceETH, ethPriceUSD), 10 ** 18);
+        assetPriceUSD = SafeMath.safeDiv(SafeMath.safeMul(assetPriceETH, ethPriceUSD), 10 ** 18);
       }
       
-      uint256 assetValueUSD = safeDiv(safeMul(portfolio.assets[i].amount, assetPriceUSD), 10 ** _tokenDecimals);
-      userScore = safeAdd(userScore, assetValueUSD);
+      uint256 assetValueUSD = SafeMath.safeDiv(SafeMath.safeMul(portfolio.assets[i].amount, assetPriceUSD), 10 ** _tokenDecimals);
+      userScore = SafeMath.safeAdd(userScore, assetValueUSD);
     }
     
     // Update ranking
@@ -588,7 +620,7 @@ contract Stele {
       if (userAddress != address(0)) {
         validRankers[actualRankerCount] = userAddress;
         initialRewards[actualRankerCount] = rewardRatio[i];
-        totalInitialRewardWeight = safeAdd(totalInitialRewardWeight, rewardRatio[i]);
+        totalInitialRewardWeight = SafeMath.safeAdd(totalInitialRewardWeight, rewardRatio[i]);
         actualRankerCount++;
       }
     }
@@ -602,7 +634,7 @@ contract Stele {
         // Calculate reward based on original ratio
         require(totalInitialRewardWeight > 0, "IW");
         // Use direct calculation to avoid precision loss
-        uint256 rewardAmount = safeDiv(safeMul(challenge.totalRewards, initialRewards[i]), totalInitialRewardWeight);
+        uint256 rewardAmount = SafeMath.safeDiv(SafeMath.safeMul(challenge.totalRewards, initialRewards[i]), totalInitialRewardWeight);
         
         // Cannot distribute more than the available balance
         if (rewardAmount > undistributed) {
@@ -611,7 +643,7 @@ contract Stele {
         
         if (rewardAmount > 0) {
           // Update state before external call (Checks-Effects-Interactions pattern)
-          undistributed = safeSub(undistributed, rewardAmount);
+          undistributed = SafeMath.safeSub(undistributed, rewardAmount);
           
           bool success = usdTokenContract.transfer(userAddress, rewardAmount);
           require(success, "RTF");
@@ -623,31 +655,6 @@ contract Stele {
         }
       }
     }
-  }
-
-  function safeAdd(uint256 a, uint256 b) internal pure returns (uint256) {
-    uint256 c = a + b;
-    require(c >= a, "OFA");
-    return c;
-  }
-
-  function safeSub(uint256 a, uint256 b) internal pure returns (uint256) {
-    require(b <= a, "UF");
-    return a - b;
-  }
-
-  function safeMul(uint256 a, uint256 b) internal pure returns (uint256) {
-    if (a == 0) {
-      return 0;
-    }
-    uint256 c = a * b;
-    require(c / a == b, "OFM");
-    return c;
-  }
-
-  function safeDiv(uint256 a, uint256 b) internal pure returns (uint256) {
-    require(b > 0, "DZ");
-    return a / b;
   }
 
   // Internal function to distribute Stele token bonus
@@ -662,5 +669,48 @@ contract Stele {
       }
     }
     // Silently fail if insufficient balance - no revert to avoid breaking main functionality
+  }
+
+  // Mint Performance NFT for top 5 users after getRewards execution
+  function mintPerformanceNFT(uint256 challengeId) external {
+    require(performanceNFTContract != address(0), "NNC"); // NFT contract Not set
+    
+    Challenge storage challenge = challenges[challengeId];
+    
+    // Validate challenge exists and has ended
+    require(challenge.startTime > 0, "CNE"); // Challenge Not Exists
+    require(block.timestamp >= challenge.endTime, "NE"); // Not Ended
+    
+    // Check if caller is in top 5
+    uint8 userRank = 0;
+    bool isTopRanker = false;
+    
+    for (uint8 i = 0; i < 5; i++) {
+      if (challenge.topUsers[i] == msg.sender) {
+        userRank = i + 1; // rank starts from 1
+        isTopRanker = true;
+        break;
+      }
+    }
+    
+    require(isTopRanker, "NT5"); // Not Top 5
+    
+    // Check if user can mint NFT (haven't claimed yet)
+    require(IStelePerformanceNFT(performanceNFTContract).canMintNFT(challengeId, msg.sender), "AC");
+    
+    // Get user's final score
+    uint256 finalScore = challenge.score[userRank - 1];
+    
+    // Call NFT contract to mint
+    IStelePerformanceNFT(performanceNFTContract).mintPerformanceNFT(
+      challengeId,
+      msg.sender,
+      challenge.totalUsers,
+      finalScore,
+      userRank,
+      challenge.seedMoney, // initial value
+      challenge.challengeType,
+      challenge.startTime
+    );
   }
 }
