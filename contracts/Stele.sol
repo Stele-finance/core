@@ -26,7 +26,6 @@ struct Challenge {
   uint256 totalRewards; // USD Token
   uint256 seedMoney;
   uint256 entryFee;
-  uint8 maxAssets;
   address[5] topUsers; // top 5 users
   uint256[5] score; // score of top 5 users
   mapping(address => UserPortfolio) portfolios;
@@ -52,6 +51,7 @@ contract Stele {
   // Stele Token Bonus System
   address public steleToken;
   uint256 public createChallengeBonus;
+  uint256 public joinChallengeBonus;
   uint256 public getRewardsBonus;
 
   // Challenge repository
@@ -69,7 +69,7 @@ contract Stele {
   event SeedMoney(uint256 newSeedMoney);
   event AddToken(address tokenAddress);
   event RemoveToken(address tokenAddress);
-  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee, uint8 maxAssets);
+  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee);
   event Join(uint256 challengeId, address user, uint256 seedMoney);
   event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 toAmount);
   event Register(uint256 challengeId, address user, uint256 performance);
@@ -90,13 +90,14 @@ contract Stele {
     usdTokenDecimals = IERC20Minimal(_usdToken).decimals(); 
     maxAssets = 10;
     seedMoney = 1000 * 10**usdTokenDecimals;
-    entryFee = 1 * 10**usdTokenDecimals; // 1 USD for initial testing period, default : 10 USD
+    entryFee = 10 * 10**usdTokenDecimals; // 10 USD
     rewardRatio = [50, 26, 13, 7, 4];
     challengeCounter = 0;
     // Initialize Stele Token Bonus
     steleToken = _steleToken;
     createChallengeBonus = 1000 * 10**18; // 10000 STL tokens
-    getRewardsBonus = 100000 * 10**18;     // 100000 STL tokens
+    joinChallengeBonus = 500 * 10**18; // 500 STL tokens
+    getRewardsBonus = 100000 * 10**18; // 100000 STL tokens
 
     // Initialize investable tokens directly
     isInvestable[wethToken] = true;
@@ -274,7 +275,6 @@ contract Stele {
     challenge.totalRewards = 0;
     challenge.seedMoney = seedMoney;
     challenge.entryFee = entryFee;
-    challenge.maxAssets = maxAssets;
     
     // Initialize top users and their values
     for (uint i = 0; i < 5; i++) {
@@ -282,7 +282,7 @@ contract Stele {
       challenge.score[i] = 0;
     }
     
-    emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee, challenge.maxAssets);
+    emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee);
     
     // Distribute Stele token bonus for creating challenge
     distributeSteleBonus(challengeId, msg.sender, createChallengeBonus, "CR");
@@ -304,13 +304,13 @@ contract Stele {
     IERC20Minimal usdTokenContract = IERC20Minimal(usdToken);
     
     // First check if user has enough tokens
-    require(usdTokenContract.balanceOf(msg.sender) >= entryFee, "NEB");
+    require(usdTokenContract.balanceOf(msg.sender) >= challenge.entryFee, "NEB");
     
     // Check if user has approved the contract to transfer tokens
-    require(usdTokenContract.allowance(msg.sender, address(this)) >= entryFee, "NA");
+    require(usdTokenContract.allowance(msg.sender, address(this)) >= challenge.entryFee, "NA");
     
     // Transfer tokens
-    bool transferSuccess = usdTokenContract.transferFrom(msg.sender, address(this), entryFee);
+    bool transferSuccess = usdTokenContract.transferFrom(msg.sender, address(this), challenge.entryFee);
     require(transferSuccess, "TF");
     
     // Add user to challenge
@@ -325,9 +325,12 @@ contract Stele {
     portfolio.assets.push(initialAsset);
     
     // Update challenge total rewards
-    challenge.totalRewards = safeAdd(challenge.totalRewards, entryFee);
-    
-    emit Join(challengeId, msg.sender, challenge.seedMoney);  
+    challenge.totalRewards = safeAdd(challenge.totalRewards, challenge.entryFee);
+
+    emit Join(challengeId, msg.sender, challenge.seedMoney);
+
+    // Distribute Stele token bonus for joining challenge
+    distributeSteleBonus(challengeId, msg.sender, joinChallengeBonus, "JCR");
   }
 
   // Swap assets within a challenge portfolio
@@ -418,7 +421,7 @@ contract Stele {
     }
     
     if (!foundTarget) {
-      require(portfolio.assets.length < challenge.maxAssets, "FA");
+      require(portfolio.assets.length < maxAssets, "FA");
       portfolio.assets.push(Asset({
         tokenAddress: to,
         amount: toAmount
