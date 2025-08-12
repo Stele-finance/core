@@ -83,7 +83,6 @@ contract Stele {
   // NFT contract address
   address public performanceNFTContract;
 
-
   // Event definitions
   event SteleCreated(address owner,address usdToken, uint8 maxAssets, uint256 seedMoney, uint256 entryFee, uint256[5] rewardRatio);
   event RewardRatio(uint256[5] newRewardRatio);

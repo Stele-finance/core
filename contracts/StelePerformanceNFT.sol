@@ -50,7 +50,7 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   constructor(address _steleContract) {
     owner = msg.sender;
     steleContract = _steleContract;
-    baseImageURI = "https://stele.io/public/nft/challenge/";
+    baseImageURI = "https://stele.io/nft/challenge/";
   }
 
   // Set base image URI (only owner)
