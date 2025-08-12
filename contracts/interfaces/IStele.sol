@@ -67,17 +67,7 @@ interface IStele {
   function getUserPortfolio(uint256 challengeId, address user) external view returns (address[] memory tokenAddresses, uint256[] memory amounts);
 
   // Ranking function
-  function getRanking(uint256 challengeId) external view returns (address[10] memory topUsers, uint256[10] memory scores);
+  function getRanking(uint256 challengeId) external view returns (address[5] memory topUsers, uint256[5] memory scores);
   
-  // Get challenge information
-  function getChallengeInfo(uint256 challengeId) external view returns (
-    uint256 id,
-    ChallengeType challengeType,
-    uint256 startTime,
-    uint256 endTime,
-    uint256 totalRewards,
-    uint256 seedMoney,
-    uint256 entryFee,
-    bool isActive
-  );
+  function mintPerformanceNFT(uint256 challengeId) external;
 } 
