@@ -71,10 +71,8 @@ npx hardhat run scripts/8_arbitrum_deployStele.js --network arbitrum
 ## Network Configuration
 
 The project supports multiple networks configured in hardhat.config.ts:15:
-- **hardhat**: Local development with mainnet forking
 - **mainnet**: Ethereum mainnet deployment
 - **arbitrum**: Arbitrum mainnet deployment  
-- **base**: Base mainnet deployment
 
 ## Environment Variables
 
@@ -82,7 +80,6 @@ Create `.env` file in project root:
 ```
 PRIVATE_KEY=your_private_key_here
 INFURA_API_KEY=your_infura_api_key_here
-ARBISCAN_API_KEY=your_arbiscan_api_key_here
 ```
 
 ## Key Contract Addresses
