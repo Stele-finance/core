@@ -23,19 +23,18 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   using SafeMath for uint256;
 
   // State variables
-  address public steleContract;
-  address public owner;
-  string public baseImageURI;
+  address public override steleContract;
+  address public override owner;
+  string public override baseImageURI;
   
   // NFT storage
   uint256 private _nextTokenId = 1;
   mapping(uint256 => PerformanceNFT) public performanceNFTs;
   mapping(uint256 => address) public nftOwners;
-  mapping(address => uint256[]) public userNFTs;
+  mapping(address => mapping(uint256 => uint256)) public userNFTsByIndex;
+  mapping(address => uint256) public userNFTCount;
   mapping(uint256 => mapping(address => bool)) public override hasClaimedNFT; // challengeId => user => claimed
   uint256[] private _allTokens; // For enumerable functionality
-
-  // Events (inherited from interface)
 
   modifier onlyOwner() {
     require(msg.sender == owner, "NO");
@@ -53,9 +52,18 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
     baseImageURI = "https://stele.io/nft/challenge/";
   }
 
+  // Transfer ownership (only owner)
+  function transferOwnership(address newOwner) external override onlyOwner {
+    require(newOwner != address(0), "ZA"); // Zero Address
+    address previousOwner = owner;
+    owner = newOwner;
+    emit OwnershipTransferred(previousOwner, newOwner);
+  }
+
   // Set base image URI (only owner)
-  function setBaseImageURI(string calldata _baseImageURI) external onlyOwner {
+  function setBaseImageURI(string calldata _baseImageURI) external override onlyOwner {
     baseImageURI = _baseImageURI;
+    emit BaseImageURIUpdated(_baseImageURI);
   }
 
   // Calculate return rate based on final score and initial value (basis points: 10000 = 100%)
@@ -122,7 +130,8 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
     
     // Assign NFT to user
     nftOwners[tokenId] = user;
-    userNFTs[user].push(tokenId);
+    userNFTsByIndex[user][userNFTCount[user]] = tokenId;
+    userNFTCount[user]++;
     _allTokens.push(tokenId);
     
     // Emit ERC-721 Transfer event for external dapp detection (minting: from = address(0))
@@ -319,8 +328,8 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
 
   // IERC721Enumerable compatibility functions for marketplace/explorer support
   function tokenOfOwnerByIndex(address tokenOwner, uint256 index) external view override returns (uint256) {
-    require(index < userNFTs[tokenOwner].length, "OOB"); // Out of bounds
-    return userNFTs[tokenOwner][index];
+    require(index < userNFTCount[tokenOwner], "OOB"); // Out of bounds
+    return userNFTsByIndex[tokenOwner][index];
   }
 
   function tokenByIndex(uint256 index) external view override returns (uint256) {
@@ -337,12 +346,42 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   // Get NFT balance of owner (ERC-721 standard)
   function balanceOf(address tokenOwner) external view override returns (uint256) {
     require(tokenOwner != address(0), "ZA"); // Zero Address
-    return userNFTs[tokenOwner].length;
+    return userNFTCount[tokenOwner];
   }
 
-  // Get user's NFT tokens
-  function getUserNFTs(address user) external view override returns (uint256[] memory) {
-    return userNFTs[user];
+  // Get user's NFT tokens with pagination
+  function getUserNFTs(address user, uint256 offset, uint256 limit) external view override returns (uint256[] memory tokens, uint256 total) {
+    total = userNFTCount[user];
+    
+    if (offset >= total) {
+      return (new uint256[](0), total);
+    }
+    
+    uint256 end = offset + limit;
+    if (end > total) {
+      end = total;
+    }
+    
+    uint256 length = end - offset;
+    tokens = new uint256[](length);
+    
+    for (uint256 i = 0; i < length; i++) {
+      tokens[i] = userNFTsByIndex[user][offset + i];
+    }
+    
+    return (tokens, total);
+  }
+  
+  // Get all user's NFT tokens (for backward compatibility, gas limit aware)
+  function getAllUserNFTs(address user) external view override returns (uint256[] memory) {
+    uint256 total = userNFTCount[user];
+    uint256[] memory tokens = new uint256[](total);
+    
+    for (uint256 i = 0; i < total; i++) {
+      tokens[i] = userNFTsByIndex[user][i];
+    }
+    
+    return tokens;
   }
 
   // Get total NFT supply
@@ -353,14 +392,5 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   // Check if token exists
   function exists(uint256 tokenId) external view override returns (bool) {
     return nftOwners[tokenId] != address(0);
-  }
-
-  // ============ INTERNAL HELPER FUNCTIONS ============
-  
-  // Get chain ID using assembly (compatible with Solidity 0.7.6)
-  function _getChainId() internal pure returns (uint256 chainId) {
-    assembly {
-      chainId := chainid()
-    }
   }
 }

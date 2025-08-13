@@ -5,10 +5,9 @@ pragma abicoder v2;
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
 import '@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol';
 import './interfaces/IERC20Minimal.sol';
+import './interfaces/IStele.sol';
 import './libraries/SafeMath.sol';
 
-// Challenge type definition
-enum ChallengeType { OneWeek, OneMonth, ThreeMonths, SixMonths, OneYear }
 
 struct Asset {
   address tokenAddress;
@@ -21,7 +20,7 @@ struct UserPortfolio {
 
 struct Challenge {
   uint256 id;
-  ChallengeType challengeType;
+  IStele.ChallengeType challengeType;
   uint256 startTime;
   uint256 endTime;
   uint256 totalRewards; // USD Token
@@ -29,7 +28,7 @@ struct Challenge {
   uint256 entryFee;
   uint32 totalUsers;
   address[5] topUsers; // top 5 users
-  uint256[5] score; // score of top 5 users
+  uint256[5] scores; // scores of top 5 users
   mapping(address => UserPortfolio) portfolios;
   mapping(address => bool) isRegistered;
 }
@@ -43,62 +42,47 @@ interface IStelePerformanceNFT {
     uint256 finalScore,
     uint8 rank,
     uint256 initialValue,
-    ChallengeType challengeType,
+    IStele.ChallengeType challengeType,
     uint256 challengeStartTime
   ) external returns (uint256);
   
   function canMintNFT(uint256 challengeId, address user) external view returns (bool);
 }
 
-contract Stele {
+contract Stele is IStele {
   // Use libraries
   using SafeMath for uint256;
 
   // Base Mainnet
-  address public uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
+  address public override uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
 
   // State variables
-  address public owner;
-  address public usdToken;
-  address public wethToken;
-  uint256 public seedMoney;
-  uint256 public entryFee;
-  uint8 public usdTokenDecimals;
-  uint8 public maxAssets;
-  uint256[5] public rewardRatio;
-  mapping(address => bool) public isInvestable;
+  address public override owner;
+  address public override usdToken;
+  address public override wethToken;
+  uint256 public override seedMoney;
+  uint256 public override entryFee;
+  uint8 public override usdTokenDecimals;
+  uint8 public override maxAssets;
+  uint256[5] public override rewardRatio;
+  mapping(address => bool) public override isInvestable;
+  mapping(uint256 => bool) public override rewardsDistributed;
 
   // Stele Token Bonus System
-  address public steleToken;
-  uint256 public createChallengeBonus;
-  uint256 public joinChallengeBonus;
-  uint256 public getRewardsBonus;
+  address public override steleToken;
+  uint256 public override createChallengeBonus;
+  uint256 public override joinChallengeBonus;
+  uint256 public override getRewardsBonus;
 
   // Challenge repository
   mapping(uint256 => Challenge) public challenges;
-  uint256 public challengeCounter;
+  uint256 public override challengeCounter;
   // Latest challenge ID by challenge type
-  mapping(ChallengeType => uint256) public latestChallengesByType;
+  mapping(IStele.ChallengeType => uint256) public override latestChallengesByType;
 
   // NFT contract address
-  address public performanceNFTContract;
+  address public override performanceNFTContract;
 
-  // Event definitions
-  event SteleCreated(address owner,address usdToken, uint8 maxAssets, uint256 seedMoney, uint256 entryFee, uint256[5] rewardRatio);
-  event RewardRatio(uint256[5] newRewardRatio);
-  event EntryFee(uint256 newEntryFee);
-  event MaxAssets(uint8 newMaxAssets);
-  event SeedMoney(uint256 newSeedMoney);
-  event AddToken(address tokenAddress);
-  event RemoveToken(address tokenAddress);
-  event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee);
-  event Join(uint256 challengeId, address user, uint256 seedMoney);
-  event Swap(uint256 challengeId, address user, address fromAsset, address toAsset, uint256 fromAmount, uint256 toAmount);
-  event Register(uint256 challengeId, address user, uint256 performance);
-  event Reward(uint256 challengeId, address user, uint256 rewardAmount);
-  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-  event SteleTokenBonus(uint256 challengeId, address indexed user, string action, uint256 amount);
-  event PerformanceNFTContractSet(address indexed nftContract);
 
   modifier onlyOwner() {
       require(msg.sender == owner, 'NO');
@@ -132,31 +116,31 @@ contract Stele {
   }
 
   // Transfer ownership of the contract to a new account
-  function transferOwnership(address newOwner) external onlyOwner {
+  function transferOwnership(address newOwner) external override onlyOwner {
     require(newOwner != address(0), "NZ");
     emit OwnershipTransferred(owner, newOwner);
     owner = newOwner;
   }
 
   // Set Performance NFT contract address
-  function setPerformanceNFTContract(address _nftContract) external onlyOwner {
+  function setPerformanceNFTContract(address _nftContract) external override onlyOwner {
     require(_nftContract != address(0), "NZ");
     performanceNFTContract = _nftContract;
     emit PerformanceNFTContractSet(_nftContract);
   }
 
   // Duration in seconds for each challenge type
-  function getDuration(ChallengeType challengeType) internal pure returns (uint256) {
-    if (challengeType == ChallengeType.OneWeek) return 7 days;
-    if (challengeType == ChallengeType.OneMonth) return 30 days;
-    if (challengeType == ChallengeType.ThreeMonths) return 90 days;
-    if (challengeType == ChallengeType.SixMonths) return 180 days;
-    if (challengeType == ChallengeType.OneYear) return 365 days;
+  function getDuration(IStele.ChallengeType challengeType) internal pure returns (uint256) {
+    if (challengeType == IStele.ChallengeType.OneWeek) return 7 days;
+    if (challengeType == IStele.ChallengeType.OneMonth) return 30 days;
+    if (challengeType == IStele.ChallengeType.ThreeMonths) return 90 days;
+    if (challengeType == IStele.ChallengeType.SixMonths) return 180 days;
+    if (challengeType == IStele.ChallengeType.OneYear) return 365 days;
     return 0;
   }
 
   // Reward distribution ratio setting function
-  function setRewardRatio(uint256[5] calldata _rewardRatio) external onlyOwner {
+  function setRewardRatio(uint256[5] calldata _rewardRatio) external override onlyOwner {
     uint256 sum = 0;
     for (uint i = 0; i < 5; i++) {
         require(_rewardRatio[i] > 0, "IR");
@@ -174,19 +158,19 @@ contract Stele {
   }
   
   // Entry fee setting function
-  function setEntryFee(uint256 _entryFee) external onlyOwner {
+  function setEntryFee(uint256 _entryFee) external override onlyOwner {
     entryFee = _entryFee;
     emit EntryFee(_entryFee);
   }
   
   // Initial capital setting function
-  function setSeedMoney(uint256 _seedMoney) external onlyOwner {
+  function setSeedMoney(uint256 _seedMoney) external override onlyOwner {
     seedMoney = _seedMoney;
     emit SeedMoney(_seedMoney);
   }
   
   // Investable token setting function
-  function setToken(address tokenAddress) external onlyOwner {
+  function setToken(address tokenAddress) external override onlyOwner {
     require(tokenAddress != address(0), "ZA"); // Zero Address
     require(!isInvestable[tokenAddress], "AT"); // Already Token
     
@@ -195,7 +179,7 @@ contract Stele {
   }
   
   // Non-investable token setting function
-  function resetToken(address tokenAddress) external onlyOwner {
+  function resetToken(address tokenAddress) external override onlyOwner {
     require(tokenAddress != address(0), "ZA"); // Zero Address
     require(isInvestable[tokenAddress], "NT"); // Not investableToken
     require(tokenAddress != usdToken, "UCR"); // USD token Cannot be Removed
@@ -206,13 +190,37 @@ contract Stele {
   }
 
   // Max assets setting function
-  function setMaxAssets(uint8 _maxAssets) external onlyOwner {
+  function setMaxAssets(uint8 _maxAssets) external override onlyOwner {
     maxAssets = _maxAssets;
     emit MaxAssets(_maxAssets);
   }
 
+  // Get challenge basic info (cannot return mappings in interface)
+  function getChallengeInfo(uint256 challengeId) external view override returns (
+    uint256 _id,
+    IStele.ChallengeType _challengeType,
+    uint256 _startTime,
+    uint256 _endTime,
+    uint256 _totalRewards,
+    uint256 _seedMoney,
+    uint256 _entryFee,
+    uint32 _totalUsers
+  ) {
+    Challenge storage challenge = challenges[challengeId];
+    return (
+      challenge.id,
+      challenge.challengeType,
+      challenge.startTime,
+      challenge.endTime,
+      challenge.totalRewards,
+      challenge.seedMoney,
+      challenge.entryFee,
+      challenge.totalUsers
+    );
+  }
+
   // Get user's portfolio in a specific challenge
-  function getUserPortfolio(uint256 challengeId, address user) external view returns (address[] memory tokenAddresses, uint256[] memory amounts) {
+  function getUserPortfolio(uint256 challengeId, address user) external view override returns (address[] memory tokenAddresses, uint256[] memory amounts) {
     Challenge storage challenge = challenges[challengeId];
     require(challenge.startTime > 0, "CNE");
     
@@ -284,7 +292,7 @@ contract Stele {
   }
 
   // Create a new challenge
-  function createChallenge(ChallengeType challengeType) external {
+  function createChallenge(IStele.ChallengeType challengeType) external override {
     uint256 latestChallengeId = latestChallengesByType[challengeType];
     // Only allow creating a new challenge if it's the first challenge or the previous challenge has ended
     if (latestChallengeId != 0) {
@@ -310,7 +318,7 @@ contract Stele {
     // Initialize top users and their values
     for (uint i = 0; i < 5; i++) {
       challenge.topUsers[i] = address(0);
-      challenge.score[i] = 0;
+      challenge.scores[i] = 0;
     }
     
     emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee);
@@ -320,7 +328,7 @@ contract Stele {
   }
 
   // Join an existing challenge
-  function joinChallenge(uint256 challengeId) external {
+  function joinChallenge(uint256 challengeId) external override {
     Challenge storage challenge = challenges[challengeId];
     
     // Check if challenge exists and is still active
@@ -366,7 +374,7 @@ contract Stele {
   }
 
   // Swap assets within a challenge portfolio
-  function swap(uint256 challengeId, address from, address to, uint256 amount) external {
+  function swap(uint256 challengeId, address from, address to, uint256 amount) external override {
     Challenge storage challenge = challenges[challengeId];
     
     // Validate challenge and user
@@ -473,7 +481,7 @@ contract Stele {
   }
 
   // Register final performance and close position
-  function register(uint256 challengeId) external {
+  function register(uint256 challengeId) external override {
     Challenge storage challenge = challenges[challengeId];
     
     // Validate challenge and user
@@ -536,19 +544,19 @@ contract Stele {
       // Shift elements to remove current position
       for (uint256 i = idx; i < 4; i++) {
         challenge.topUsers[i] = challenge.topUsers[i + 1];
-        challenge.score[i] = challenge.score[i + 1];
+        challenge.scores[i] = challenge.scores[i + 1];
       }
       
       // Clear last position
       challenge.topUsers[4] = address(0);
-      challenge.score[4] = 0;
+      challenge.scores[4] = 0;
     }
     
     // Find insertion position using binary search concept (for sorted array)
     uint256 insertPos = 5; // Default: not in top 5
     
     for (uint256 i = 0; i < 5; i++) {
-      if (challenge.topUsers[i] == address(0) || userScore > challenge.score[i]) {
+      if (challenge.topUsers[i] == address(0) || userScore > challenge.scores[i]) {
         insertPos = i;
         break;
       }
@@ -559,28 +567,25 @@ contract Stele {
       // Shift elements to make space
       for (uint256 i = 4; i > insertPos; i--) {
         challenge.topUsers[i] = challenge.topUsers[i - 1];
-        challenge.score[i] = challenge.score[i - 1];
+        challenge.scores[i] = challenge.scores[i - 1];
       }
       
       // Insert new entry
       challenge.topUsers[insertPos] = user;
-      challenge.score[insertPos] = userScore;
+      challenge.scores[insertPos] = userScore;
     }
   }
   
-  function getRanking(uint256 challengeId) external view returns (address[5] memory topUsers, uint256[5] memory scores) {
+  function getRanking(uint256 challengeId) external view override returns (address[5] memory topUsers, uint256[5] memory scores) {
     Challenge storage challenge = challenges[challengeId];
     for (uint256 i = 0; i < 5; i++) {
       topUsers[i] = challenge.topUsers[i];
-      scores[i] = challenge.score[i];
+      scores[i] = challenge.scores[i];
     }
   }
 
-  // Rewards distribution tracking
-  mapping(uint256 => bool) public rewardsDistributed;
-
   // Claim rewards after challenge ends
-  function getRewards(uint256 challengeId) external {
+  function getRewards(uint256 challengeId) external override {
     Challenge storage challenge = challenges[challengeId];
     // Validate challenge
     require(challenge.startTime > 0, "CNE");
@@ -671,7 +676,7 @@ contract Stele {
   }
 
   // Mint Performance NFT for top 5 users after getRewards execution
-  function mintPerformanceNFT(uint256 challengeId) external {
+  function mintPerformanceNFT(uint256 challengeId) external override {
     require(performanceNFTContract != address(0), "NNC"); // NFT contract Not set
     
     Challenge storage challenge = challenges[challengeId];
@@ -697,8 +702,8 @@ contract Stele {
     // Check if user can mint NFT (haven't claimed yet)
     require(IStelePerformanceNFT(performanceNFTContract).canMintNFT(challengeId, msg.sender), "AC");
     
-    // Get user's final score
-    uint256 finalScore = challenge.score[userRank - 1];
+    // Get user's final scores
+    uint256 finalScore = challenge.scores[userRank - 1];
     
     // Call NFT contract to mint
     IStelePerformanceNFT(performanceNFTContract).mintPerformanceNFT(

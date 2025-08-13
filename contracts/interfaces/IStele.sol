@@ -20,11 +20,13 @@ interface IStele {
   event Register(uint256 challengeId, address user, uint256 performance);
   event Reward(uint256 challengeId, address user, uint256 rewardAmount);
   event SteleTokenBonus(uint256 challengeId, address indexed user, string action, uint256 amount);
+  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+  event PerformanceNFTContractSet(address indexed nftContract);
 
   // Read functions
   function owner() external view returns (address);
   function uniswapV3Factory() external view returns (address);
-  function WETH() external view returns (address);
+  function wethToken() external view returns (address);
   function usdToken() external view returns (address);
   function usdTokenDecimals() external view returns (uint8);
   function maxAssets() external view returns (uint8);
@@ -32,18 +34,21 @@ interface IStele {
   function entryFee() external view returns (uint256);
   function rewardRatio(uint256 index) external view returns (uint256);
   function isInvestable(address tokenAddress) external view returns (bool);
-  function challenges(uint256 challengeId) external view returns (
+  function steleToken() external view returns (address);
+  function createChallengeBonus() external view returns (uint256);
+  function joinChallengeBonus() external view returns (uint256);
+  function getRewardsBonus() external view returns (uint256);
+  function performanceNFTContract() external view returns (address);
+  function rewardsDistributed(uint256 challengeId) external view returns (bool);
+  function getChallengeInfo(uint256 challengeId) external view returns (
     uint256 _id,
     ChallengeType _challengeType,
     uint256 _startTime,
     uint256 _endTime,
     uint256 _totalRewards,
     uint256 _seedMoney,
-    address _usdToken,
-    uint8 _usdTokenDecimals,
-    uint8 _maxAssets,
-    address _creator,
-    uint256 _entryFee
+    uint256 _entryFee,
+    uint32 _totalUsers
   );
   function challengeCounter() external view returns (uint256);
   function latestChallengesByType(ChallengeType challengeType) external view returns (uint256);
@@ -55,6 +60,8 @@ interface IStele {
   function setToken(address tokenAddress) external;
   function setMaxAssets(uint8 _maxAssets) external;
   function resetToken(address tokenAddress) external;
+  function transferOwnership(address newOwner) external;
+  function setPerformanceNFTContract(address _nftContract) external;
 
   // Challenge management functions
   function createChallenge(ChallengeType challengeType) external;
