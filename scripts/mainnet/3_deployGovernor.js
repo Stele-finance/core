@@ -5,12 +5,12 @@ async function main() {
   console.log("Deploying governance contracts with the account:", deployer.address);
   console.log("Account balance:", (await ethers.provider.getBalance(deployer.address)).toString());
 
-  // Arbitrum
-  const tokenAddress = "0x5763a0523A672d7c88127e10533bA78853454510";
-  const timeLockAddress = "0x9Ce9a6fC0d94697797581dc5Fb6aAb7e923FD977";
+  // Mainnet
+  const tokenAddress = "0x71c24377e7f24b6d822C9dad967eBC77C04667b5";
+  const timeLockAddress = "0xE4a26F02beAd76083BAfC2240096A3757962fC95";
   // Governor values
   const QUORUM_PERCENTAGE = 4; // 4%
-  const VOTING_PERIOD = 272; // 1 hour for initial testing period, default : 7 days (45818 blocks)
+  const VOTING_PERIOD = 272; // 1 hour for initial testing period, default : 7 days (50400 blocks)
   const VOTING_DELAY = 1; // 1 block
 
   // Deploy Governor
