@@ -58,18 +58,18 @@ npx hardhat test test/Stele.ts --network hardhat
 
 **Ethereum Mainnet:**
 ```bash
-npx hardhat run scripts/1_deployToken.js --network mainnet
-npx hardhat run scripts/2_deployTimeLock.js --network mainnet
-npx hardhat run scripts/3_deployGovernor.js --network mainnet
-npx hardhat run scripts/4_deployStele.js --network mainnet
+npx hardhat run scripts/mainnet/1_deployToken.js --network mainnet
+npx hardhat run scripts/mainnet/2_deployTimeLock.js --network mainnet
+npx hardhat run scripts/mainnet/3_deployGovernor.js --network mainnet
+npx hardhat run scripts/mainnet/4_deploySteleAndNFT.js --network mainnet
 ```
 
 **Arbitrum Network:**
 ```bash
-npx hardhat run scripts/5_arbitrum_deployToken.js --network arbitrum
-npx hardhat run scripts/6_arbitrum_deployTimeLock.js --network arbitrum
-npx hardhat run scripts/7_arbitrum_deployGovernor.js --network arbitrum
-npx hardhat run scripts/8_arbitrum_deployStele.js --network arbitrum
+npx hardhat run scripts/arbitrum/1_arbitrum_deployToken.js --network arbitrum
+npx hardhat run scripts/arbitrum/2_arbitrum_deployTimeLock.js --network arbitrum
+npx hardhat run scripts/arbitrum/3_arbitrum_deployGovernor.js --network arbitrum
+npx hardhat run scripts/arbitrum/4_arbitrum_deploySteleAndNFT.js --network arbitrum
 ```
 
 ## Network Configuration
