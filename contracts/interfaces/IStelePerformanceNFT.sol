@@ -98,4 +98,7 @@ interface IStelePerformanceNFT {
   function setApprovalForAll(address operator, bool approved) external;
   function getApproved(uint256 tokenId) external view returns (address);
   function isApprovedForAll(address tokenOwner, address operator) external pure returns (bool);
+  
+  // ERC165 interface detection
+  function supportsInterface(bytes4 interfaceId) external pure returns (bool);
 }

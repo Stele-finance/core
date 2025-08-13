@@ -83,7 +83,6 @@ contract Stele is IStele {
   // NFT contract address
   address public override performanceNFTContract;
 
-
   modifier onlyOwner() {
       require(msg.sender == owner, 'NO');
       _;

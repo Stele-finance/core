@@ -393,4 +393,13 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   function exists(uint256 tokenId) external view override returns (bool) {
     return nftOwners[tokenId] != address(0);
   }
+
+  // ERC165 support - indicates which interfaces this contract implements
+  function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
+    return
+      interfaceId == 0x01ffc9a7 || // ERC165 Interface ID
+      interfaceId == 0x80ac58cd || // ERC721 Interface ID
+      interfaceId == 0x5b5e139f || // ERC721Metadata Interface ID
+      interfaceId == 0x780e9d63;   // ERC721Enumerable Interface ID
+  }
 }
