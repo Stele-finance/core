@@ -41,7 +41,7 @@ describe("Stele Contract", function () {
 
       // Deploy Stele contract
       const Stele = await ethers.getContractFactory("Stele");
-      stele = await Stele.deploy(USDC, STELE_TOKEN);
+      stele = await Stele.deploy(WETH, USDC, STELE_TOKEN);
       await stele.waitForDeployment();
 
       // Get USDC contract instance
