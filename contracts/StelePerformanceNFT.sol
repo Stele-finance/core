@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.7.6;
-pragma abicoder v2;
+pragma solidity ^0.8.0;
 
-import './libraries/SafeMath.sol';
-import './libraries/StringUtils.sol';
-import './interfaces/IStelePerformanceNFT.sol';
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 // NFT metadata structure for performance records
 struct PerformanceNFT {
@@ -19,49 +19,48 @@ struct PerformanceNFT {
   uint256 seedMoney; // Initial investment amount
 }
 
-contract StelePerformanceNFT is IStelePerformanceNFT {
-  using SafeMath for uint256;
+// Challenge type definition
+enum ChallengeType { OneWeek, OneMonth, ThreeMonths, SixMonths, OneYear }
+
+contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
+  using Strings for uint256;
+
+  // Events
+  event PerformanceNFTMinted(uint256 indexed tokenId, uint256 indexed challengeId, address indexed user, uint8 rank, uint256 returnRate);
+  event TransferAttemptBlocked(uint256 indexed tokenId, address from, address to, string reason);
+  event BaseImageURIUpdated(string newBaseImageURI);
 
   // State variables
-  address public override steleContract;
-  address public override owner;
-  string public override baseImageURI;
+  address public steleContract;
+  string public baseImageURI;
   
   // NFT storage
   uint256 private _nextTokenId = 1;
   mapping(uint256 => PerformanceNFT) public performanceNFTs;
-  mapping(uint256 => address) public nftOwners;
   mapping(address => mapping(uint256 => uint256)) public userNFTsByIndex;
   mapping(address => uint256) public userNFTCount;
-  mapping(uint256 => mapping(address => bool)) public override hasClaimedNFT; // challengeId => user => claimed
+  mapping(uint256 => mapping(address => bool)) public hasClaimedNFT; // challengeId => user => claimed
   uint256[] private _allTokens; // For enumerable functionality
 
-  modifier onlyOwner() {
-    require(msg.sender == owner, "NO");
-    _;
-  }
 
   modifier onlySteleContract() {
     require(msg.sender == steleContract, "NSC"); // Not Stele Contract
     _;
   }
 
-  constructor(address _steleContract) {
-    owner = msg.sender;
+  constructor(address _steleContract) ERC721("Stele Performance NFT", "SPNFT") {
     steleContract = _steleContract;
     baseImageURI = "https://stele.io/nft/challenge/";
   }
 
-  // Transfer ownership (only owner)
-  function transferOwnership(address newOwner) external override onlyOwner {
+  // Transfer ownership (only owner) - Override Ownable
+  function transferOwnership(address newOwner) public override onlyOwner {
     require(newOwner != address(0), "ZA"); // Zero Address
-    address previousOwner = owner;
-    owner = newOwner;
-    emit OwnershipTransferred(previousOwner, newOwner);
+    super.transferOwnership(newOwner);
   }
 
   // Set base image URI (only owner)
-  function setBaseImageURI(string calldata _baseImageURI) external override onlyOwner {
+  function setBaseImageURI(string calldata _baseImageURI) external onlyOwner {
     baseImageURI = _baseImageURI;
     emit BaseImageURIUpdated(_baseImageURI);
   }
@@ -69,7 +68,7 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   // Calculate return rate based on final score and initial value (basis points: 10000 = 100%)
   function calculateReturnRate(uint256 finalScore, uint256 initialValue) internal pure returns (uint256) {
     if (finalScore > initialValue) {
-      return SafeMath.safeDiv(SafeMath.safeMul(SafeMath.safeSub(finalScore, initialValue), 10000), initialValue);
+      return ((finalScore - initialValue) * 10000) / initialValue;
     } else {
       return 0;
     }
@@ -81,13 +80,13 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
     
     if (finalScore >= seedMoney) {
       // Profit: ((finalScore - seedMoney) / seedMoney) * 1000000
-      uint256 profit = SafeMath.safeSub(finalScore, seedMoney);
-      uint256 profitPercentage = SafeMath.safeDiv(SafeMath.safeMul(profit, 1000000), seedMoney);
+      uint256 profit = finalScore - seedMoney;
+      uint256 profitPercentage = (profit * 1000000) / seedMoney;
       return int256(profitPercentage);
     } else {
       // Loss: -((seedMoney - finalScore) / seedMoney) * 1000000
-      uint256 loss = SafeMath.safeSub(seedMoney, finalScore);
-      uint256 lossPercentage = SafeMath.safeDiv(SafeMath.safeMul(loss, 1000000), seedMoney);
+      uint256 loss = seedMoney - finalScore;
+      uint256 lossPercentage = (loss * 1000000) / seedMoney;
       return -int256(lossPercentage);
     }
   }
@@ -102,7 +101,7 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
     uint256 initialValue,
     ChallengeType challengeType,
     uint256 challengeStartTime
-  ) external override onlySteleContract returns (uint256) {
+  ) external onlySteleContract returns (uint256) {
     require(!hasClaimedNFT[challengeId][user], "AC"); // Already Claimed
     
     // Calculate return rate (basis points for backward compatibility)
@@ -128,14 +127,12 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
     // Mark as claimed
     hasClaimedNFT[challengeId][user] = true;
     
-    // Assign NFT to user
-    nftOwners[tokenId] = user;
+    // Mint NFT using OpenZeppelin's _mint function (ERC721Enumerable handles _allTokens)
+    _mint(user, tokenId);
+    
+    // Update custom mappings for user enumeration
     userNFTsByIndex[user][userNFTCount[user]] = tokenId;
     userNFTCount[user]++;
-    _allTokens.push(tokenId);
-    
-    // Emit ERC-721 Transfer event for external dapp detection (minting: from = address(0))
-    emit Transfer(address(0), user, tokenId);
     
     emit PerformanceNFTMinted(tokenId, challengeId, user, rank, returnRate);
     
@@ -143,7 +140,7 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   }
 
   // Get NFT metadata
-  function getPerformanceNFTData(uint256 tokenId) external view override returns (
+  function getPerformanceNFTData(uint256 tokenId) external view returns (
     uint256 challengeId,
     address user,
     uint32 totalUsers,
@@ -154,7 +151,7 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
     uint256 challengeStartTime,
     uint256 seedMoney
   ) {
-    require(nftOwners[tokenId] != address(0), "TNE"); // Token Not Exists
+    require(_exists(tokenId), "TNE"); // Token Not Exists
     
     PerformanceNFT memory nft = performanceNFTs[tokenId];
     return (
@@ -171,7 +168,7 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   }
 
   // Check if user can mint NFT for a challenge
-  function canMintNFT(uint256 challengeId, address user) external view override returns (bool) {
+  function canMintNFT(uint256 challengeId, address user) external view returns (bool) {
     return !hasClaimedNFT[challengeId][user];
   }
 
@@ -188,10 +185,16 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   // Get return rate text
   function getReturnRateText(int256 profitLossPercent) internal pure returns (string memory) {
     if (profitLossPercent >= 0) {
-      return string(abi.encodePacked("+", StringUtils.uint2str(uint256(profitLossPercent) / 10000), ".", StringUtils.uint2str((uint256(profitLossPercent) % 10000) / 100), "%"));
+      return string(abi.encodePacked("+", Strings.toString(uint256(profitLossPercent) / 10000), ".", Strings.toString((uint256(profitLossPercent) % 10000) / 100), "%"));
     } else {
-      return string(abi.encodePacked("-", StringUtils.uint2str(uint256(-profitLossPercent) / 10000), ".", StringUtils.uint2str((uint256(-profitLossPercent) % 10000) / 100), "%"));
+      return string(abi.encodePacked("-", Strings.toString(uint256(-profitLossPercent) / 10000), ".", Strings.toString((uint256(-profitLossPercent) % 10000) / 100), "%"));
     }
+  }
+
+  // Convert timestamp to date string (simple implementation)
+  function _timestampToDate(uint256 timestamp) internal pure returns (string memory) {
+    // Simple implementation - just return timestamp as string
+    return Strings.toString(timestamp);
   }
 
   // Get image name based on rank
@@ -206,7 +209,7 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
 
   // Get token metadata URI with investment period, return rate, and ranking information
   function tokenURI(uint256 tokenId) public view override returns (string memory) {
-    require(nftOwners[tokenId] != address(0), "TNE");
+    require(_exists(tokenId), "TNE");
     
     PerformanceNFT memory nft = performanceNFTs[tokenId];
     int256 profitLossPercent = calculateProfitLossPercentage(nft.finalScore, nft.seedMoney);
@@ -214,14 +217,14 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
     string memory periodText = getChallengePeriodText(nft.challengeType);
     string memory returnRateText = getReturnRateText(profitLossPercent);
     string memory imageUrl = string(abi.encodePacked(baseImageURI, getImageName(nft.rank)));
-    string memory rankText = StringUtils.uint2str(nft.rank);
-    string memory totalUsersText = StringUtils.uint2str(nft.totalUsers);
+    string memory rankText = Strings.toString(nft.rank);
+    string memory totalUsersText = Strings.toString(nft.totalUsers);
 
     // Build JSON in two parts to avoid stack too deep error
     string memory part1 = string(abi.encodePacked(
-      '{"name":"Stele Performance NFT #', StringUtils.uint2str(tokenId),
+      '{"name":"Stele Performance NFT #', Strings.toString(tokenId),
       '","description":"Invested for ', periodText, 
-      ' starting from ', StringUtils.timestampToDate(nft.challengeStartTime), 
+      ' starting from ', _timestampToDate(nft.challengeStartTime), 
       ' and achieved ', rankText, 
       ' place out of ', totalUsersText,
       ' participants with ', returnRateText, 
@@ -242,63 +245,63 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   // ============ SOULBOUND NFT FUNCTIONS ============
   
   // Transfer functions are blocked for soulbound functionality
-  function transferFrom(address from, address to, uint256 tokenId) external override {
+  function transferFrom(address from, address to, uint256 tokenId) public override {
     emit TransferAttemptBlocked(tokenId, from, to, "Soulbound NFT cannot be transferred");
     revert("SBT");
   }
   
-  function safeTransferFrom(address from, address to, uint256 tokenId) external override {
+  function safeTransferFrom(address from, address to, uint256 tokenId) public override {
     emit TransferAttemptBlocked(tokenId, from, to, "Soulbound NFT cannot be transferred");
     revert("SBT");
   }
   
-  function safeTransferFrom(address from, address to, uint256 tokenId, bytes calldata /* data */) external override {
+  function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory /* data */) public override {
     emit TransferAttemptBlocked(tokenId, from, to, "Soulbound NFT cannot be transferred");
     revert("SBT");
   }
   
   // Approval functions are blocked since transfers are not allowed
-  function approve(address /* to */, uint256 /* tokenId */) external pure override {
+  function approve(address /* to */, uint256 /* tokenId */) public pure override {
     revert("SBT");
   }
   
-  function setApprovalForAll(address /* operator */, bool /* approved */) external pure override {
+  function setApprovalForAll(address /* operator */, bool /* approved */) public pure override {
     revert("SBT");
   }
   
-  function getApproved(uint256 tokenId) external view override returns (address) {
-    require(nftOwners[tokenId] != address(0), "TNE");
+  function getApproved(uint256 tokenId) public view override returns (address) {
+    require(_exists(tokenId), "TNE");
     return address(0); // Always return zero address for soulbound tokens
   }
   
-  function isApprovedForAll(address /* tokenOwner */, address /* operator */) external pure override returns (bool) {
+  function isApprovedForAll(address /* tokenOwner */, address /* operator */) public pure override returns (bool) {
     return false; // Always return false for soulbound tokens
   }
   
   // Check if this is a soulbound token
-  function isSoulbound() external pure override returns (bool) {
+  function isSoulbound() external pure returns (bool) {
     return true;
   }
   
   // Get soulbound token information
-  function getSoulboundInfo(uint256 tokenId) external view override returns (
+  function getSoulboundInfo(uint256 tokenId) external view returns (
     bool isSoulboundToken,
     address boundTo,
     string memory reason
   ) {
-    require(nftOwners[tokenId] != address(0), "TNE");
-    return (true, nftOwners[tokenId], "Performance NFT bound to achievement owner");
+    require(_exists(tokenId), "TNE");
+    return (true, ownerOf(tokenId), "Performance NFT bound to achievement owner");
   }
 
   // Verify if NFT was minted by this contract with challenge validation
-  function verifyNFTAuthenticity(uint256 tokenId) external view override returns (
+  function verifyNFTAuthenticity(uint256 tokenId) external view returns (
     bool isAuthentic,
     uint256 challengeId,
     address originalMinter,
     uint8 rank,
     uint256 blockTimestamp
   ) {
-    if (nftOwners[tokenId] == address(0)) {
+    if (!_exists(tokenId)) {
       return (false, 0, address(0), 0, 0);
     }
     
@@ -313,44 +316,37 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   }
 
   // Get contract name and version for verification
-  function getContractInfo() external pure override returns (string memory contractName, string memory version) {
+  function getContractInfo() external pure returns (string memory contractName, string memory version) {
     return ("Stele Performance NFT", "1.0.0");
   }
 
-  // IERC721Metadata compatibility functions for external wallet/marketplace support
-  function name() external pure override returns (string memory) {
-    return "Stele Performance NFT";
+  // Override required functions for ERC721Enumerable compatibility
+  function _beforeTokenTransfer(address from, address to, uint256 tokenId, uint256 batchSize)
+    internal
+    override(ERC721, ERC721Enumerable)
+  {
+    super._beforeTokenTransfer(from, to, tokenId, batchSize);
   }
 
-  function symbol() external pure override returns (string memory) {
-    return "SPNFT";
+  function supportsInterface(bytes4 interfaceId)
+    public
+    view
+    override(ERC721, ERC721Enumerable)
+    returns (bool)
+  {
+    return super.supportsInterface(interfaceId);
   }
 
-  // IERC721Enumerable compatibility functions for marketplace/explorer support
-  function tokenOfOwnerByIndex(address tokenOwner, uint256 index) external view override returns (uint256) {
+  // Custom enumeration functions (using ERC721Enumerable for standard functions)
+  function tokenOfOwnerByIndex(address tokenOwner, uint256 index) public view override returns (uint256) {
     require(index < userNFTCount[tokenOwner], "OOB"); // Out of bounds
     return userNFTsByIndex[tokenOwner][index];
   }
 
-  function tokenByIndex(uint256 index) external view override returns (uint256) {
-    require(index < _allTokens.length, "OOB"); // Out of bounds
-    return _allTokens[index];
-  }
-
-  // Get NFT owner
-  function ownerOf(uint256 tokenId) external view override returns (address) {
-    require(nftOwners[tokenId] != address(0), "TNE");
-    return nftOwners[tokenId];
-  }
-
-  // Get NFT balance of owner (ERC-721 standard)
-  function balanceOf(address tokenOwner) external view override returns (uint256) {
-    require(tokenOwner != address(0), "ZA"); // Zero Address
-    return userNFTCount[tokenOwner];
-  }
+  // ERC721 functions are inherited from OpenZeppelin
 
   // Get user's NFT tokens with pagination
-  function getUserNFTs(address user, uint256 offset, uint256 limit) external view override returns (uint256[] memory tokens, uint256 total) {
+  function getUserNFTs(address user, uint256 offset, uint256 limit) external view returns (uint256[] memory tokens, uint256 total) {
     total = userNFTCount[user];
     
     if (offset >= total) {
@@ -373,7 +369,7 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
   }
   
   // Get all user's NFT tokens (for backward compatibility, gas limit aware)
-  function getAllUserNFTs(address user) external view override returns (uint256[] memory) {
+  function getAllUserNFTs(address user) external view returns (uint256[] memory) {
     uint256 total = userNFTCount[user];
     uint256[] memory tokens = new uint256[](total);
     
@@ -384,22 +380,12 @@ contract StelePerformanceNFT is IStelePerformanceNFT {
     return tokens;
   }
 
-  // Get total NFT supply
-  function totalSupply() external view override returns (uint256) {
-    return _nextTokenId - 1;
-  }
+  // totalSupply is provided by ERC721Enumerable
 
   // Check if token exists
-  function exists(uint256 tokenId) external view override returns (bool) {
-    return nftOwners[tokenId] != address(0);
+  function exists(uint256 tokenId) external view returns (bool) {
+    return _exists(tokenId);
   }
 
-  // ERC165 support - indicates which interfaces this contract implements
-  function supportsInterface(bytes4 interfaceId) public pure override returns (bool) {
-    return
-      interfaceId == 0x01ffc9a7 || // ERC165 Interface ID
-      interfaceId == 0x80ac58cd || // ERC721 Interface ID
-      interfaceId == 0x5b5e139f || // ERC721Metadata Interface ID
-      interfaceId == 0x780e9d63;   // ERC721Enumerable Interface ID
-  }
+  // supportsInterface is handled by the override above
 }
