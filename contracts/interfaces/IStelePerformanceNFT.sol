@@ -9,6 +9,8 @@ interface IStelePerformanceNFT {
   // Events
   event PerformanceNFTMinted(uint256 indexed tokenId, uint256 indexed challengeId, address indexed user, uint8 rank, uint256 returnRate);
   event TransferAttemptBlocked(uint256 indexed tokenId, address from, address to, string reason);
+  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+  event BaseImageURIUpdated(string newBaseImageURI);
   
   // ERC-721 Standard Events (for external dapp detection)
   event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
@@ -42,13 +44,22 @@ interface IStelePerformanceNFT {
   function canMintNFT(uint256 challengeId, address user) external view returns (bool);
   function hasClaimedNFT(uint256 challengeId, address user) external view returns (bool);
   
+  // Contract management functions
+  function owner() external view returns (address);
+  function steleContract() external view returns (address);
+  function baseImageURI() external view returns (string memory);
+  function transferOwnership(address newOwner) external;
+  function setBaseImageURI(string calldata _baseImageURI) external;
+  
   // NFT ownership functions
   function ownerOf(uint256 tokenId) external view returns (address);
   function balanceOf(address tokenOwner) external view returns (uint256);
-  function getUserNFTs(address user) external view returns (uint256[] memory);
   function totalSupply() external view returns (uint256);
   function exists(uint256 tokenId) external view returns (bool);
   function tokenURI(uint256 tokenId) external view returns (string memory);
+
+  function getUserNFTs(address user, uint256 offset, uint256 limit) external view returns (uint256[] memory tokens, uint256 total);
+  function getAllUserNFTs(address user) external view returns (uint256[] memory tokens);
   
   // IERC721Metadata compatibility functions
   function name() external view returns (string memory);
@@ -87,4 +98,7 @@ interface IStelePerformanceNFT {
   function setApprovalForAll(address operator, bool approved) external;
   function getApproved(uint256 tokenId) external view returns (address);
   function isApprovedForAll(address tokenOwner, address operator) external pure returns (bool);
+  
+  // ERC165 interface detection
+  function supportsInterface(bytes4 interfaceId) external pure returns (bool);
 }
