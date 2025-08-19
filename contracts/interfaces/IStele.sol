@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.7.6;
-pragma abicoder v2;
+pragma solidity ^0.8.28;
 
 interface IStele {
   // Enums
@@ -26,7 +25,7 @@ interface IStele {
   // Read functions
   function owner() external view returns (address);
   function uniswapV3Factory() external view returns (address);
-  function wethToken() external view returns (address);
+  function weth9() external view returns (address);
   function usdToken() external view returns (address);
   function usdTokenDecimals() external view returns (uint8);
   function maxAssets() external view returns (uint8);

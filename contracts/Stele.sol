@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.7.6;
-pragma abicoder v2;
+pragma solidity ^0.8.28;
 
-import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
-import '@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol';
 import './interfaces/IERC20Minimal.sol';
 import './interfaces/IStele.sol';
-import './libraries/SafeMath.sol';
-
+import {PriceOracle, IUniswapV3Factory} from './libraries/PriceOracle.sol';
 
 struct Asset {
   address tokenAddress;
@@ -50,16 +46,15 @@ interface IStelePerformanceNFT {
 }
 
 contract Stele is IStele {
-  // Use libraries
-  using SafeMath for uint256;
-
-  // Base Mainnet
-  address public override uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
-
+  using PriceOracle for *;
+  
+  address public constant swapRouter = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
+  address public constant uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
+  
   // State variables
   address public override owner;
   address public override usdToken;
-  address public override wethToken;
+  address public override weth9;
   uint256 public override seedMoney;
   uint256 public override entryFee;
   uint8 public override usdTokenDecimals;
@@ -89,10 +84,10 @@ contract Stele is IStele {
   }
   
   // Contract constructor
-  constructor(address _wethToken, address _usdToken, address _steleToken) {
+  constructor(address _weth9, address _usdToken, address _steleToken) {
     owner = msg.sender;
     usdToken = _usdToken;
-    wethToken = _wethToken;
+    weth9 = _weth9;
     usdTokenDecimals = IERC20Minimal(_usdToken).decimals(); 
     maxAssets = 10;
     seedMoney = 1000 * 10**usdTokenDecimals;
@@ -106,8 +101,8 @@ contract Stele is IStele {
     getRewardsBonus = 100000 * 10**18; // 100000 STL tokens
 
     // Initialize investable tokens directly
-    isInvestable[wethToken] = true;
-    emit AddToken(wethToken);
+    isInvestable[weth9] = true;
+    emit AddToken(weth9);
     isInvestable[usdToken] = true;
     emit AddToken(usdToken);
 
@@ -182,7 +177,7 @@ contract Stele is IStele {
     require(tokenAddress != address(0), "ZA"); // Zero Address
     require(isInvestable[tokenAddress], "NT"); // Not investableToken
     require(tokenAddress != usdToken, "UCR"); // USD token Cannot be Removed
-    require(tokenAddress != wethToken, "WCR"); // WETH Cannot be Removed
+    require(tokenAddress != weth9, "WCR"); // WETH Cannot be Removed
 
     isInvestable[tokenAddress] = false;
     emit RemoveToken(tokenAddress);
@@ -237,58 +232,6 @@ contract Stele is IStele {
     return (tokenAddresses, amounts);
   }
 
-  // Get USD price from ETH (1 ETH = ? USD)
-  function getETHPriceUSD() internal view returns (uint256) {
-    uint16[3] memory fees = [500, 3000, 10000];
-    uint256 quoteAmount = 0;
-
-    for (uint256 i=0; i<fees.length; i++) {
-      address pool = IUniswapV3Factory(uniswapV3Factory).getPool(wethToken, usdToken, uint24(fees[i]));
-      if (pool == address(0)) {
-          continue;
-      }
-
-      uint32 secondsAgo = OracleLibrary.getOldestObservationSecondsAgo(pool);
-      uint32 maxSecondsAgo = 1800;
-      secondsAgo = secondsAgo > maxSecondsAgo ? maxSecondsAgo : secondsAgo;
-
-      (int24 tick, ) = OracleLibrary.consult(address(pool), secondsAgo);
-      uint256 _quoteAmount = OracleLibrary.getQuoteAtTick(tick, uint128(1 * 10**18), wethToken, usdToken);
-      
-      if (quoteAmount < _quoteAmount) {
-        quoteAmount = _quoteAmount;
-      }
-    }
-
-    return quoteAmount;
-  }
-
-  // Get token price in ETH
-  function getTokenPriceETH(address baseToken, uint128 baseAmount) internal view returns (uint256) { 
-    address quoteToken = wethToken;
-    uint16[3] memory fees = [500, 3000, 10000];
-    uint256 quoteAmount = 0;
-
-    for (uint256 i=0; i<fees.length; i++) {
-      address pool = IUniswapV3Factory(uniswapV3Factory).getPool(baseToken, quoteToken, uint24(fees[i]));
-      if (pool == address(0)) {
-          continue;
-      }
-
-      uint32 secondsAgo = OracleLibrary.getOldestObservationSecondsAgo(pool);
-      uint32 maxSecondsAgo = 1800;
-      secondsAgo = secondsAgo > maxSecondsAgo ? maxSecondsAgo : secondsAgo;
-
-      (int24 tick, ) = OracleLibrary.consult(address(pool), secondsAgo);
-      uint256 _quoteAmount = OracleLibrary.getQuoteAtTick(tick, baseAmount, baseToken, quoteToken);
-      
-      if (quoteAmount < _quoteAmount) {
-        quoteAmount = _quoteAmount;
-      }
-    }
-
-    return quoteAmount;
-  }
 
   // Create a new challenge
   function createChallenge(IStele.ChallengeType challengeType) external override {
@@ -363,8 +306,8 @@ contract Stele is IStele {
     portfolio.assets.push(initialAsset);
     
     // Update challenge total rewards
-    challenge.totalRewards = SafeMath.safeAdd(challenge.totalRewards, challenge.entryFee);
-    challenge.totalUsers = uint32(SafeMath.safeAdd(challenge.totalUsers, 1));
+    challenge.totalRewards = challenge.totalRewards + challenge.entryFee;
+    challenge.totalUsers = uint32(challenge.totalUsers + 1);
 
     emit Join(challengeId, msg.sender, challenge.seedMoney);
 
@@ -413,19 +356,19 @@ contract Stele is IStele {
     // Calculate fromPriceUSD using ETH as intermediate
     if (from == usdToken) {
       fromPriceUSD = 1 * 10 ** usdTokenDecimals;
-    } else if (from == wethToken) {
-      fromPriceUSD = getETHPriceUSD();
+    } else if (from == weth9) {
+      fromPriceUSD = PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken);
     } else {
-      fromPriceUSD = SafeMath.safeDiv(SafeMath.safeMul(getTokenPriceETH(from, uint128(1 * 10 ** fromTokenDecimals)), getETHPriceUSD()), 10 ** 18);
+      fromPriceUSD = (PriceOracle.getTokenPriceETH(uniswapV3Factory, from, weth9, uint128(1 * 10 ** fromTokenDecimals)) * PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken)) / 10 ** 18;
     }
     
     // Calculate toPriceUSD using ETH as intermediate
     if (to == usdToken) {
       toPriceUSD = 1 * 10 ** usdTokenDecimals;
-    } else if (to == wethToken) {
-      toPriceUSD = getETHPriceUSD();
+    } else if (to == weth9) {
+      toPriceUSD = PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken);
     } else {
-      toPriceUSD = SafeMath.safeDiv(SafeMath.safeMul(getTokenPriceETH(to, uint128(1 * 10 ** toTokenDecimals)), getETHPriceUSD()), 10 ** 18);
+      toPriceUSD = (PriceOracle.getTokenPriceETH(uniswapV3Factory, to, weth9, uint128(1 * 10 ** toTokenDecimals)) * PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken)) / 10 ** 18;
     }
         
     // Validate that prices are available
@@ -433,27 +376,27 @@ contract Stele is IStele {
     require(toPriceUSD > 0, "TP0");
 
     // Calculate swap amount with decimal adjustment
-    uint256 toAmount = SafeMath.safeDiv(SafeMath.safeMul(amount, fromPriceUSD), toPriceUSD);
+    uint256 toAmount = (amount * fromPriceUSD) / toPriceUSD;
 
     // Adjust for decimal differences
     if (toTokenDecimals > fromTokenDecimals) {
-      toAmount = SafeMath.safeMul(toAmount, 10 ** (toTokenDecimals - fromTokenDecimals));
+      toAmount = toAmount * 10 ** (toTokenDecimals - fromTokenDecimals);
     } else if (fromTokenDecimals > toTokenDecimals) {
-      toAmount = SafeMath.safeDiv(toAmount, 10 ** (fromTokenDecimals - toTokenDecimals));
+      toAmount = toAmount / 10 ** (fromTokenDecimals - toTokenDecimals);
     }
     
     // Ensure swap amount is not zero
     require(toAmount > 0, "TA0");
     
     // Update source asset
-    portfolio.assets[index].amount = SafeMath.safeSub(portfolio.assets[index].amount, amount);
+    portfolio.assets[index].amount = portfolio.assets[index].amount - amount;
     
     // Add or update target asset
     bool foundTarget = false;
 
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
       if (portfolio.assets[i].tokenAddress == to) {
-        portfolio.assets[i].amount = SafeMath.safeAdd(portfolio.assets[i].amount, toAmount);
+        portfolio.assets[i].amount = portfolio.assets[i].amount + toAmount;
         foundTarget = true;
         break;
       }
@@ -490,7 +433,7 @@ contract Stele is IStele {
     
     // Calculate total portfolio value USD using ETH as intermediate
     uint256 userScore = 0;
-    uint256 ethPriceUSD = getETHPriceUSD(); // Get ETH price once for efficiency
+    uint256 ethPriceUSD = PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken); // Get ETH price once for efficiency
     
     UserPortfolio memory portfolio = challenge.portfolios[msg.sender];
     for (uint256 i = 0; i < portfolio.assets.length; i++) {
@@ -502,15 +445,15 @@ contract Stele is IStele {
       uint256 assetPriceUSD;
       if (tokenAddress == usdToken) {
         assetPriceUSD = 1 * 10 ** usdTokenDecimals;
-      } else if (tokenAddress == wethToken) {
+      } else if (tokenAddress == weth9) {
         assetPriceUSD = ethPriceUSD;
       } else {
-        uint256 assetPriceETH = getTokenPriceETH(tokenAddress, uint128(1 * 10 ** _tokenDecimals));
-        assetPriceUSD = SafeMath.safeDiv(SafeMath.safeMul(assetPriceETH, ethPriceUSD), 10 ** 18);
+        uint256 assetPriceETH = PriceOracle.getTokenPriceETH(uniswapV3Factory, tokenAddress, weth9, uint128(1 * 10 ** _tokenDecimals));
+        assetPriceUSD = (assetPriceETH * ethPriceUSD) / 10 ** 18;
       }
       
-      uint256 assetValueUSD = SafeMath.safeDiv(SafeMath.safeMul(portfolio.assets[i].amount, assetPriceUSD), 10 ** _tokenDecimals);
-      userScore = SafeMath.safeAdd(userScore, assetValueUSD);
+      uint256 assetValueUSD = (portfolio.assets[i].amount * assetPriceUSD) / 10 ** _tokenDecimals;
+      userScore = userScore + assetValueUSD;
     }
     
     // Update ranking
@@ -623,7 +566,7 @@ contract Stele is IStele {
       if (userAddress != address(0)) {
         validRankers[actualRankerCount] = userAddress;
         initialRewards[actualRankerCount] = rewardRatio[i];
-        totalInitialRewardWeight = SafeMath.safeAdd(totalInitialRewardWeight, rewardRatio[i]);
+        totalInitialRewardWeight = totalInitialRewardWeight + rewardRatio[i];
         actualRankerCount++;
       }
     }
@@ -637,7 +580,7 @@ contract Stele is IStele {
         // Calculate reward based on original ratio
         require(totalInitialRewardWeight > 0, "IW");
         // Use direct calculation to avoid precision loss
-        uint256 rewardAmount = SafeMath.safeDiv(SafeMath.safeMul(challenge.totalRewards, initialRewards[i]), totalInitialRewardWeight);
+        uint256 rewardAmount = (challenge.totalRewards * initialRewards[i]) / totalInitialRewardWeight;
         
         // Cannot distribute more than the available balance
         if (rewardAmount > undistributed) {
@@ -646,7 +589,7 @@ contract Stele is IStele {
         
         if (rewardAmount > 0) {
           // Update state before external call (Checks-Effects-Interactions pattern)
-          undistributed = SafeMath.safeSub(undistributed, rewardAmount);
+          undistributed = undistributed - rewardAmount;
           
           bool success = usdTokenContract.transfer(userAddress, rewardAmount);
           require(success, "RTF");

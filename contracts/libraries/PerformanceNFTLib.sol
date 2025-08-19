@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.7.6;
-pragma abicoder v2;
-
-import './SafeMath.sol';
+pragma solidity ^0.8.28;
 import './StringUtils.sol';
 
 library PerformanceNFTLib {
@@ -24,7 +21,7 @@ library PerformanceNFTLib {
   function calculateReturnRate(uint256 finalScore, uint256 initialValue) internal pure returns (uint256) {
     if (finalScore > initialValue) {
       // Profit case: ((finalScore - initialValue) / initialValue) * 10000
-      return SafeMath.safeDiv(SafeMath.safeMul(SafeMath.safeSub(finalScore, initialValue), 10000), initialValue);
+      return ((finalScore - initialValue) * 10000) / initialValue;
     } else {
       // Loss case: return 0 for simplicity
       return 0;
