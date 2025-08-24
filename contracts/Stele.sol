@@ -1,21 +1,17 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.7.6;
-pragma abicoder v2;
+pragma solidity ^0.8.28;
 
-import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol';
-import '@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol';
 import './interfaces/IERC20Minimal.sol';
 import './interfaces/IStele.sol';
-import './libraries/SafeMath.sol';
+import {PriceOracle, IUniswapV3Factory} from './libraries/PriceOracle.sol';
 
-
-struct Asset {
+struct Token {
   address tokenAddress;
   uint256 amount;
 }
 
 struct UserPortfolio {
-  Asset[] assets;
+  Token[] tokens;
 }
 
 struct Challenge {
@@ -50,28 +46,27 @@ interface IStelePerformanceNFT {
 }
 
 contract Stele is IStele {
-  // Use libraries
-  using SafeMath for uint256;
-
-  // Base Mainnet
-  address public override uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
-
+  using PriceOracle for *;
+  
+  address public constant swapRouter = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
+  address public constant uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
+  
   // State variables
   address public override owner;
   address public override usdToken;
-  address public override wethToken;
+  address public override weth9;
   uint256 public override seedMoney;
   uint256 public override entryFee;
   uint8 public override usdTokenDecimals;
-  uint8 public override maxAssets;
+  uint8 public override maxTokens;
   uint256[5] public override rewardRatio;
   mapping(address => bool) public override isInvestable;
   mapping(uint256 => bool) public override rewardsDistributed;
 
   // Stele Token Bonus System
   address public override steleToken;
-  uint256 public override createChallengeBonus;
-  uint256 public override joinChallengeBonus;
+  uint256 public override createBonus;
+  uint256 public override joinBonus;
   uint256 public override getRewardsBonus;
 
   // Challenge repository
@@ -89,29 +84,29 @@ contract Stele is IStele {
   }
   
   // Contract constructor
-  constructor(address _wethToken, address _usdToken, address _steleToken) {
+  constructor(address _weth9, address _usdToken, address _steleToken) {
     owner = msg.sender;
     usdToken = _usdToken;
-    wethToken = _wethToken;
+    weth9 = _weth9;
     usdTokenDecimals = IERC20Minimal(_usdToken).decimals(); 
-    maxAssets = 10;
+    maxTokens = 10;
     seedMoney = 1000 * 10**usdTokenDecimals;
     entryFee = 10 * 10**usdTokenDecimals; // 10 USD
     rewardRatio = [50, 26, 13, 7, 4];
     challengeCounter = 0;
     // Initialize Stele Token Bonus
     steleToken = _steleToken;
-    createChallengeBonus = 1000 * 10**18; // 10000 STL tokens
-    joinChallengeBonus = 500 * 10**18; // 500 STL tokens
-    getRewardsBonus = 100000 * 10**18; // 100000 STL tokens
+    createBonus = 1000 * 10**18; // 1000 STL tokens
+    joinBonus = 500 * 10**18; // 500 STL tokens
+    getRewardsBonus = 50000 * 10**18; // 50000 STL tokens
 
     // Initialize investable tokens directly
-    isInvestable[wethToken] = true;
-    emit AddToken(wethToken);
+    isInvestable[weth9] = true;
+    emit AddToken(weth9);
     isInvestable[usdToken] = true;
     emit AddToken(usdToken);
 
-    emit SteleCreated(owner, usdToken, maxAssets, seedMoney, entryFee, rewardRatio);
+    emit SteleCreated(owner, usdToken, maxTokens, seedMoney, entryFee, rewardRatio);
   }
 
   // Transfer ownership of the contract to a new account
@@ -182,16 +177,34 @@ contract Stele is IStele {
     require(tokenAddress != address(0), "ZA"); // Zero Address
     require(isInvestable[tokenAddress], "NT"); // Not investableToken
     require(tokenAddress != usdToken, "UCR"); // USD token Cannot be Removed
-    require(tokenAddress != wethToken, "WCR"); // WETH Cannot be Removed
+    require(tokenAddress != weth9, "WCR"); // WETH Cannot be Removed
 
     isInvestable[tokenAddress] = false;
     emit RemoveToken(tokenAddress);
   }
 
-  // Max assets setting function
-  function setMaxAssets(uint8 _maxAssets) external override onlyOwner {
-    maxAssets = _maxAssets;
-    emit MaxAssets(_maxAssets);
+  // Max tokens setting function
+  function setMaxTokens(uint8 _maxTokens) external override onlyOwner {
+    maxTokens = _maxTokens;
+    emit MaxTokens(_maxTokens);
+  }
+
+  // Create challenge bonus setting function
+  function setCreateBonus(uint256 _createBonus) external onlyOwner {
+    createBonus = _createBonus;
+    emit CreateBonusUpdated(_createBonus);
+  }
+
+  // Join challenge bonus setting function
+  function setJoinBonus(uint256 _joinBonus) external onlyOwner {
+    joinBonus = _joinBonus;
+    emit JoinBonusUpdated(_joinBonus);
+  }
+
+  // Get rewards bonus setting function
+  function setGetRewardsBonus(uint256 _getRewardsBonus) external onlyOwner {
+    getRewardsBonus = _getRewardsBonus;
+    emit GetRewardsBonusUpdated(_getRewardsBonus);
   }
 
   // Get challenge basic info (cannot return mappings in interface)
@@ -224,71 +237,19 @@ contract Stele is IStele {
     require(challenge.startTime > 0, "CNE");
     
     UserPortfolio memory portfolio = challenge.portfolios[user];
-    uint256 assetCount = portfolio.assets.length;
-    
-    tokenAddresses = new address[](assetCount);
-    amounts = new uint256[](assetCount);
-    
-    for (uint256 i = 0; i < assetCount; i++) {
-      tokenAddresses[i] = portfolio.assets[i].tokenAddress;
-      amounts[i] = portfolio.assets[i].amount;
+    uint256 tokenCount = portfolio.tokens.length;
+
+    tokenAddresses = new address[](tokenCount);
+    amounts = new uint256[](tokenCount);
+
+    for (uint256 i = 0; i < tokenCount; i++) {
+      tokenAddresses[i] = portfolio.tokens[i].tokenAddress;
+      amounts[i] = portfolio.tokens[i].amount;
     }
     
     return (tokenAddresses, amounts);
   }
 
-  // Get USD price from ETH (1 ETH = ? USD)
-  function getETHPriceUSD() internal view returns (uint256) {
-    uint16[3] memory fees = [500, 3000, 10000];
-    uint256 quoteAmount = 0;
-
-    for (uint256 i=0; i<fees.length; i++) {
-      address pool = IUniswapV3Factory(uniswapV3Factory).getPool(wethToken, usdToken, uint24(fees[i]));
-      if (pool == address(0)) {
-          continue;
-      }
-
-      uint32 secondsAgo = OracleLibrary.getOldestObservationSecondsAgo(pool);
-      uint32 maxSecondsAgo = 1800;
-      secondsAgo = secondsAgo > maxSecondsAgo ? maxSecondsAgo : secondsAgo;
-
-      (int24 tick, ) = OracleLibrary.consult(address(pool), secondsAgo);
-      uint256 _quoteAmount = OracleLibrary.getQuoteAtTick(tick, uint128(1 * 10**18), wethToken, usdToken);
-      
-      if (quoteAmount < _quoteAmount) {
-        quoteAmount = _quoteAmount;
-      }
-    }
-
-    return quoteAmount;
-  }
-
-  // Get token price in ETH
-  function getTokenPriceETH(address baseToken, uint128 baseAmount) internal view returns (uint256) { 
-    address quoteToken = wethToken;
-    uint16[3] memory fees = [500, 3000, 10000];
-    uint256 quoteAmount = 0;
-
-    for (uint256 i=0; i<fees.length; i++) {
-      address pool = IUniswapV3Factory(uniswapV3Factory).getPool(baseToken, quoteToken, uint24(fees[i]));
-      if (pool == address(0)) {
-          continue;
-      }
-
-      uint32 secondsAgo = OracleLibrary.getOldestObservationSecondsAgo(pool);
-      uint32 maxSecondsAgo = 1800;
-      secondsAgo = secondsAgo > maxSecondsAgo ? maxSecondsAgo : secondsAgo;
-
-      (int24 tick, ) = OracleLibrary.consult(address(pool), secondsAgo);
-      uint256 _quoteAmount = OracleLibrary.getQuoteAtTick(tick, baseAmount, baseToken, quoteToken);
-      
-      if (quoteAmount < _quoteAmount) {
-        quoteAmount = _quoteAmount;
-      }
-    }
-
-    return quoteAmount;
-  }
 
   // Create a new challenge
   function createChallenge(IStele.ChallengeType challengeType) external override {
@@ -323,7 +284,7 @@ contract Stele is IStele {
     emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee);
     
     // Distribute Stele token bonus for creating challenge
-    distributeSteleBonus(challengeId, msg.sender, createChallengeBonus, "CR");
+    distributeSteleBonus(challengeId, msg.sender, createBonus, "CR");
   }
 
   // Join an existing challenge
@@ -336,7 +297,7 @@ contract Stele is IStele {
     require(!challenge.isRegistered[msg.sender], "C");
     
     // Check if user has already joined
-    require(challenge.portfolios[msg.sender].assets.length == 0, "AJ");
+    require(challenge.portfolios[msg.sender].tokens.length == 0, "AJ");
     
     // Transfer USD token to contract
     IERC20Minimal usdTokenContract = IERC20Minimal(usdToken);
@@ -355,25 +316,25 @@ contract Stele is IStele {
     UserPortfolio storage portfolio = challenge.portfolios[msg.sender];
     
     // Initialize with seed money in USD
-    Asset memory initialAsset = Asset({
+    Token memory initialToken = Token({
       tokenAddress: usdToken,
       amount: challenge.seedMoney
     });
-    
-    portfolio.assets.push(initialAsset);
-    
+
+    portfolio.tokens.push(initialToken);
+
     // Update challenge total rewards
-    challenge.totalRewards = SafeMath.safeAdd(challenge.totalRewards, challenge.entryFee);
-    challenge.totalUsers = uint32(SafeMath.safeAdd(challenge.totalUsers, 1));
+    challenge.totalRewards = challenge.totalRewards + challenge.entryFee;
+    challenge.totalUsers = uint32(challenge.totalUsers + 1);
 
     emit Join(challengeId, msg.sender, challenge.seedMoney);
 
     // Distribute Stele token bonus for joining challenge
-    distributeSteleBonus(challengeId, msg.sender, joinChallengeBonus, "JCR");
+    distributeSteleBonus(challengeId, msg.sender, joinBonus, "JCR");
   }
 
-  // Swap assets within a challenge portfolio
-  function swap(uint256 challengeId, address from, address to, uint256 amount) external override {
+  // Swap tokens within a challenge portfolio
+  function swap(uint256 challengeId, address tokenIn, address tokenOut, uint256 amount) external override {
     Challenge storage challenge = challenges[challengeId];
     
     // Validate challenge and user
@@ -381,20 +342,20 @@ contract Stele is IStele {
     require(block.timestamp < challenge.endTime, "E");
     require(!challenge.isRegistered[msg.sender], "C");
     
-    // Validate assets
-    require(from != to, "ST"); // Prevent same token swap
-    require(isInvestable[to], "IT"); // Not investableToken
+    // Validate tokens
+    require(tokenIn != tokenOut, "ST"); // Prevent same token swap
+    require(isInvestable[tokenOut], "IT"); // Not investableToken
     
     // Get user portfolio
     UserPortfolio storage portfolio = challenge.portfolios[msg.sender];
-    require(portfolio.assets.length > 0, "UNE");
+    require(portfolio.tokens.length > 0, "UNE");
     
-    // Find the source asset in portfolio
+    // Find the source token in portfolio
     bool found = false;
     uint256 index;
-    for (uint256 i = 0; i < portfolio.assets.length; i++) {
-      if (portfolio.assets[i].tokenAddress == from) {
-        require(portfolio.assets[i].amount >= amount, "FAM");
+    for (uint256 i = 0; i < portfolio.tokens.length; i++) {
+      if (portfolio.tokens[i].tokenAddress == tokenIn) {
+        require(portfolio.tokens[i].amount >= amount, "FTM");
         index = i;
         found = true;
         break;
@@ -403,80 +364,80 @@ contract Stele is IStele {
     
     require(found, "ANE");
 
-    // Get asset prices using ETH as intermediate
-    uint8 fromTokenDecimals = IERC20Minimal(from).decimals();
-    uint8 toTokenDecimals = IERC20Minimal(to).decimals();
+    // Get token prices using ETH as intermediate
+    uint8 tokenInDecimals = IERC20Minimal(tokenIn).decimals();
+    uint8 tokenOutDecimals = IERC20Minimal(tokenOut).decimals();
 
-    uint256 fromPriceUSD;
-    uint256 toPriceUSD;
-        
-    // Calculate fromPriceUSD using ETH as intermediate
-    if (from == usdToken) {
-      fromPriceUSD = 1 * 10 ** usdTokenDecimals;
-    } else if (from == wethToken) {
-      fromPriceUSD = getETHPriceUSD();
+    uint256 tokenInPriceUSD;
+    uint256 tokenOutPriceUSD;
+
+    // Calculate tokenInPriceUSD using ETH as intermediate
+    if (tokenIn == usdToken) {
+      tokenInPriceUSD = 1 * 10 ** usdTokenDecimals;
+    } else if (tokenIn == weth9) {
+      tokenInPriceUSD = PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken);
     } else {
-      fromPriceUSD = SafeMath.safeDiv(SafeMath.safeMul(getTokenPriceETH(from, uint128(1 * 10 ** fromTokenDecimals)), getETHPriceUSD()), 10 ** 18);
+      tokenInPriceUSD = (PriceOracle.getTokenPriceETH(uniswapV3Factory, tokenIn, weth9, uint128(1 * 10 ** tokenInDecimals)) * PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken)) / 10 ** 18;
     }
-    
-    // Calculate toPriceUSD using ETH as intermediate
-    if (to == usdToken) {
-      toPriceUSD = 1 * 10 ** usdTokenDecimals;
-    } else if (to == wethToken) {
-      toPriceUSD = getETHPriceUSD();
+
+    // Calculate tokenOutPriceUSD using ETH as intermediate
+    if (tokenOut == usdToken) {
+      tokenOutPriceUSD = 1 * 10 ** usdTokenDecimals;
+    } else if (tokenOut == weth9) {
+      tokenOutPriceUSD = PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken);
     } else {
-      toPriceUSD = SafeMath.safeDiv(SafeMath.safeMul(getTokenPriceETH(to, uint128(1 * 10 ** toTokenDecimals)), getETHPriceUSD()), 10 ** 18);
+      tokenOutPriceUSD = (PriceOracle.getTokenPriceETH(uniswapV3Factory, tokenOut, weth9, uint128(1 * 10 ** tokenOutDecimals)) * PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken)) / 10 ** 18;
     }
         
     // Validate that prices are available
-    require(fromPriceUSD > 0, "FP0");
-    require(toPriceUSD > 0, "TP0");
+    require(tokenInPriceUSD > 0, "FP0");
+    require(tokenOutPriceUSD > 0, "TP0");
 
     // Calculate swap amount with decimal adjustment
-    uint256 toAmount = SafeMath.safeDiv(SafeMath.safeMul(amount, fromPriceUSD), toPriceUSD);
+    uint256 toAmount = (amount * tokenInPriceUSD) / tokenOutPriceUSD;
 
     // Adjust for decimal differences
-    if (toTokenDecimals > fromTokenDecimals) {
-      toAmount = SafeMath.safeMul(toAmount, 10 ** (toTokenDecimals - fromTokenDecimals));
-    } else if (fromTokenDecimals > toTokenDecimals) {
-      toAmount = SafeMath.safeDiv(toAmount, 10 ** (fromTokenDecimals - toTokenDecimals));
+    if (tokenOutDecimals > tokenInDecimals) {
+      toAmount = toAmount * 10 ** (tokenOutDecimals - tokenInDecimals);
+    } else if (tokenInDecimals > tokenOutDecimals) {
+      toAmount = toAmount / 10 ** (tokenInDecimals - tokenOutDecimals);
     }
     
     // Ensure swap amount is not zero
     require(toAmount > 0, "TA0");
     
-    // Update source asset
-    portfolio.assets[index].amount = SafeMath.safeSub(portfolio.assets[index].amount, amount);
-    
-    // Add or update target asset
+    // Update source token balance
+    portfolio.tokens[index].amount = portfolio.tokens[index].amount - amount;
+
+    // Add or update target token balance
     bool foundTarget = false;
 
-    for (uint256 i = 0; i < portfolio.assets.length; i++) {
-      if (portfolio.assets[i].tokenAddress == to) {
-        portfolio.assets[i].amount = SafeMath.safeAdd(portfolio.assets[i].amount, toAmount);
+    for (uint256 i = 0; i < portfolio.tokens.length; i++) {
+      if (portfolio.tokens[i].tokenAddress == tokenOut) {
+        portfolio.tokens[i].amount = portfolio.tokens[i].amount + toAmount;
         foundTarget = true;
         break;
       }
     }
     
     if (!foundTarget) {
-      require(portfolio.assets.length < maxAssets, "FA");
-      portfolio.assets.push(Asset({
-        tokenAddress: to,
+      require(portfolio.tokens.length < maxTokens, "FA");
+      portfolio.tokens.push(Token({
+        tokenAddress: tokenOut,
         amount: toAmount
       }));
     }
     
-    // Remove asset if balance is zero
-    if (portfolio.assets[index].amount == 0) {
+    // Remove token if balance is zero
+    if (portfolio.tokens[index].amount == 0) {
       // Only reorganize array if not already the last element
-      if (index != portfolio.assets.length - 1) {
-        portfolio.assets[index] = portfolio.assets[portfolio.assets.length - 1];
+      if (index != portfolio.tokens.length - 1) {
+        portfolio.tokens[index] = portfolio.tokens[portfolio.tokens.length - 1];
       }
-      portfolio.assets.pop();
+      portfolio.tokens.pop();
     }
 
-    emit Swap(challengeId, msg.sender, from, to, amount, toAmount);
+    emit Swap(challengeId, msg.sender, tokenIn, tokenOut, amount, toAmount);
   }
 
   // Register final performance and close position
@@ -490,27 +451,27 @@ contract Stele is IStele {
     
     // Calculate total portfolio value USD using ETH as intermediate
     uint256 userScore = 0;
-    uint256 ethPriceUSD = getETHPriceUSD(); // Get ETH price once for efficiency
+    uint256 ethPriceUSD = PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken); // Get ETH price once for efficiency
     
     UserPortfolio memory portfolio = challenge.portfolios[msg.sender];
-    for (uint256 i = 0; i < portfolio.assets.length; i++) {
-      address tokenAddress = portfolio.assets[i].tokenAddress;
+    for (uint256 i = 0; i < portfolio.tokens.length; i++) {
+      address tokenAddress = portfolio.tokens[i].tokenAddress;
       uint8 _tokenDecimals = IERC20Minimal(tokenAddress).decimals();
 
       if(!isInvestable[tokenAddress]) continue;
 
-      uint256 assetPriceUSD;
+      uint256 tokenPriceUSD;
       if (tokenAddress == usdToken) {
-        assetPriceUSD = 1 * 10 ** usdTokenDecimals;
-      } else if (tokenAddress == wethToken) {
-        assetPriceUSD = ethPriceUSD;
+        tokenPriceUSD = 1 * 10 ** usdTokenDecimals;
+      } else if (tokenAddress == weth9) {
+        tokenPriceUSD = ethPriceUSD;
       } else {
-        uint256 assetPriceETH = getTokenPriceETH(tokenAddress, uint128(1 * 10 ** _tokenDecimals));
-        assetPriceUSD = SafeMath.safeDiv(SafeMath.safeMul(assetPriceETH, ethPriceUSD), 10 ** 18);
+        uint256 tokenPriceETH = PriceOracle.getTokenPriceETH(uniswapV3Factory, tokenAddress, weth9, uint128(1 * 10 ** _tokenDecimals));
+        tokenPriceUSD = (tokenPriceETH * ethPriceUSD) / 10 ** 18;
       }
-      
-      uint256 assetValueUSD = SafeMath.safeDiv(SafeMath.safeMul(portfolio.assets[i].amount, assetPriceUSD), 10 ** _tokenDecimals);
-      userScore = SafeMath.safeAdd(userScore, assetValueUSD);
+
+      uint256 tokenValueUSD = (portfolio.tokens[i].amount * tokenPriceUSD) / 10 ** _tokenDecimals;
+      userScore = userScore + tokenValueUSD;
     }
     
     // Update ranking
@@ -623,7 +584,7 @@ contract Stele is IStele {
       if (userAddress != address(0)) {
         validRankers[actualRankerCount] = userAddress;
         initialRewards[actualRankerCount] = rewardRatio[i];
-        totalInitialRewardWeight = SafeMath.safeAdd(totalInitialRewardWeight, rewardRatio[i]);
+        totalInitialRewardWeight = totalInitialRewardWeight + rewardRatio[i];
         actualRankerCount++;
       }
     }
@@ -637,7 +598,7 @@ contract Stele is IStele {
         // Calculate reward based on original ratio
         require(totalInitialRewardWeight > 0, "IW");
         // Use direct calculation to avoid precision loss
-        uint256 rewardAmount = SafeMath.safeDiv(SafeMath.safeMul(challenge.totalRewards, initialRewards[i]), totalInitialRewardWeight);
+        uint256 rewardAmount = (challenge.totalRewards * initialRewards[i]) / totalInitialRewardWeight;
         
         // Cannot distribute more than the available balance
         if (rewardAmount > undistributed) {
@@ -646,7 +607,7 @@ contract Stele is IStele {
         
         if (rewardAmount > 0) {
           // Update state before external call (Checks-Effects-Interactions pattern)
-          undistributed = SafeMath.safeSub(undistributed, rewardAmount);
+          undistributed = undistributed - rewardAmount;
           
           bool success = usdTokenContract.transfer(userAddress, rewardAmount);
           require(success, "RTF");

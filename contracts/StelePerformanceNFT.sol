@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.8;
+pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
@@ -245,36 +245,36 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
   // ============ SOULBOUND NFT FUNCTIONS ============
   
   // Transfer functions are blocked for soulbound functionality
-  function transferFrom(address from, address to, uint256 tokenId) public override {
+  function transferFrom(address from, address to, uint256 tokenId) public override(ERC721, IERC721) {
     emit TransferAttemptBlocked(tokenId, from, to, "Soulbound NFT cannot be transferred");
     revert("SBT");
   }
   
-  function safeTransferFrom(address from, address to, uint256 tokenId) public override {
+  function safeTransferFrom(address from, address to, uint256 tokenId) public override(ERC721, IERC721) {
     emit TransferAttemptBlocked(tokenId, from, to, "Soulbound NFT cannot be transferred");
     revert("SBT");
   }
   
-  function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory /* data */) public override {
+  function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory /* data */) public override(ERC721, IERC721) {
     emit TransferAttemptBlocked(tokenId, from, to, "Soulbound NFT cannot be transferred");
     revert("SBT");
   }
   
   // Approval functions are blocked since transfers are not allowed
-  function approve(address /* to */, uint256 /* tokenId */) public pure override {
+  function approve(address /* to */, uint256 /* tokenId */) public pure override(ERC721, IERC721) {
     revert("SBT");
   }
   
-  function setApprovalForAll(address /* operator */, bool /* approved */) public pure override {
+  function setApprovalForAll(address /* operator */, bool /* approved */) public pure override(ERC721, IERC721) {
     revert("SBT");
   }
   
-  function getApproved(uint256 tokenId) public view override returns (address) {
+  function getApproved(uint256 tokenId) public view override(ERC721, IERC721) returns (address) {
     require(_exists(tokenId), "TNE");
     return address(0); // Always return zero address for soulbound tokens
   }
   
-  function isApprovedForAll(address /* tokenOwner */, address /* operator */) public pure override returns (bool) {
+  function isApprovedForAll(address /* tokenOwner */, address /* operator */) public pure override(ERC721, IERC721) returns (bool) {
     return false; // Always return false for soulbound tokens
   }
   
