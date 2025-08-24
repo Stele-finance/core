@@ -41,7 +41,6 @@ interface IStelePerformanceNFT {
   );
   
   function canMintNFT(uint256 challengeId, address user) external view returns (bool);
-  function hasClaimedNFT(uint256 challengeId, address user) external view returns (bool);
   
   // Contract management functions
   function owner() external view returns (address);

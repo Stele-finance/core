@@ -48,7 +48,6 @@ interface IStelePerformanceNFT {
 contract Stele is IStele {
   using PriceOracle for *;
   
-  address public constant swapRouter = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
   address public constant uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
   
   // State variables

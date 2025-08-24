@@ -27,7 +27,6 @@ interface IStele {
 
   // Read functions
   function owner() external view returns (address);
-  function uniswapV3Factory() external view returns (address);
   function weth9() external view returns (address);
   function usdToken() external view returns (address);
   function usdTokenDecimals() external view returns (uint8);
