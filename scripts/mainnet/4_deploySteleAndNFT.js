@@ -6,8 +6,8 @@ async function main() {
   // Arbitrum
   const wethTokenAddress = "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"; // WETH
   const usdTokenAddress = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"; // USDC
-  const timeLockAddress = "0x4393433dC4a06bf112A305Aeb5AE886548bB18B3";
-  const steleTokenAddress = "0xF26A6c38E011E428B2DaC5E874BF26fb12665136"; // Stele Token
+  const timeLockAddress = "0x2e29eb2f594879080ab5e7731049cdef3cc1490e";
+  const steleTokenAddress = "0x5F11DE507879EF1DB7Ea2c4eBEDe147479E76772"; // Stele Token
 
   console.log(`💰 WETH: ${wethTokenAddress}`);
   console.log(`💵 USDC: ${usdTokenAddress}`);
@@ -21,16 +21,16 @@ async function main() {
     usdTokenAddress,
     steleTokenAddress
   );
-  await stele.waitForDeployment();
-  const steleAddress = await stele.getAddress();
+  await stele.deployed();
+  const steleAddress = await stele.address;
   console.log(`✅ Stele deployed at: ${steleAddress}\n`);
 
   // Step 2: Deploy StelePerformanceNFT contract with Stele address
   console.log("🎨 Step 2: Deploying StelePerformanceNFT contract...");
   const NFTFactory = await ethers.getContractFactory("StelePerformanceNFT");
   const nftContract = await NFTFactory.deploy(steleAddress);
-  await nftContract.waitForDeployment();
-  const nftAddress = await nftContract.getAddress();
+  await nftContract.deployed();
+  const nftAddress = await nftContract.address;
   console.log(`✅ StelePerformanceNFT deployed at: ${nftAddress}\n`);
 
   // Step 3: Set NFT contract address in Stele contract
@@ -83,8 +83,8 @@ async function main() {
       SteleToken: steleTokenAddress
     },
     transactions: {
-      stele: stele.deploymentTransaction().hash,
-      nft: nftContract.deploymentTransaction().hash,
+      stele: stele.deploymentTransaction,
+      nft: nftContract.deploymentTransaction,
       linking: linkTx.hash
     }
   };
@@ -94,8 +94,7 @@ async function main() {
 }
 
 main()
-  .then(() => process.exit(0))
+  .then(() => console.log("✅ Deployment completed successfully"))
   .catch((error) => {
     console.error("❌ Deployment failed:", error);
-    process.exit(1);
   });
