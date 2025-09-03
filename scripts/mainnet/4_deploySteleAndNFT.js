@@ -4,10 +4,10 @@ async function main() {
   console.log("🚀 Starting Stele Ecosystem Deployment...\n");
 
   // Arbitrum
-  const wethTokenAddress = "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"; // WETH
-  const usdTokenAddress = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"; // USDC
-  const timeLockAddress = "0x2e29eb2f594879080ab5e7731049cdef3cc1490e";
-  const steleTokenAddress = "0x5F11DE507879EF1DB7Ea2c4eBEDe147479E76772"; // Stele Token
+  const wethTokenAddress = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"; // WETH
+  const usdTokenAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"; // USDC
+  const timeLockAddress = "0xB4fB28A64C946c909D86388Be279F8222Fd42599";
+  const steleTokenAddress = "0xc4f1E00cCfdF3a068e2e6853565107ef59D96089"; // Stele Token
 
   console.log(`💰 WETH: ${wethTokenAddress}`);
   console.log(`💵 USDC: ${usdTokenAddress}`);

@@ -19,8 +19,8 @@ async function main() {
     executors,
     deployer.address // Admin
   );
-  await timeLock.deploymentTransaction().wait();
-  const timeLockAddress = timeLock.target;
+  await timeLock.deployed();
+  const timeLockAddress = await timeLock.address;
   console.log("TimeLock deployed to:", timeLockAddress);
 }
 
