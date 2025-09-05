@@ -26,7 +26,6 @@ struct Challenge {
   address[5] topUsers; // top 5 users
   uint256[5] scores; // scores of top 5 users
   mapping(address => UserPortfolio) portfolios;
-  mapping(address => bool) isRegistered;
 }
 
 // Interface for StelePerformanceNFT contract
@@ -293,7 +292,6 @@ contract Stele is IStele {
     // Check if challenge exists and is still active
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp < challenge.endTime, "E");
-    require(!challenge.isRegistered[msg.sender], "C");
     
     // Check if user has already joined
     require(challenge.portfolios[msg.sender].tokens.length == 0, "AJ");
@@ -330,6 +328,8 @@ contract Stele is IStele {
 
     // Distribute Stele token bonus for joining challenge
     distributeSteleBonus(challengeId, msg.sender, joinBonus, "JCR");
+
+    register(challengeId); // Auto-register after joining to update ranking
   }
 
   // Swap tokens within a challenge portfolio
@@ -339,7 +339,6 @@ contract Stele is IStele {
     // Validate challenge and user
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp < challenge.endTime, "E");
-    require(!challenge.isRegistered[msg.sender], "C");
     
     // Validate tokens
     require(tokenIn != tokenOut, "ST"); // Prevent same token swap
@@ -437,16 +436,17 @@ contract Stele is IStele {
     }
 
     emit Swap(challengeId, msg.sender, tokenIn, tokenOut, amount, toAmount);
+
+    register(challengeId); // Auto-register after swap to update ranking
   }
 
-  // Register final performance and close position
-  function register(uint256 challengeId) external override {
+  // Register latest performance
+  function register(uint256 challengeId) public override {
     Challenge storage challenge = challenges[challengeId];
     
     // Validate challenge and user
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp < challenge.endTime, "E");
-    require(!challenge.isRegistered[msg.sender], "C");
     
     // Calculate total portfolio value USD using ETH as intermediate
     uint256 userScore = 0;
@@ -475,9 +475,6 @@ contract Stele is IStele {
     
     // Update ranking
     updateRanking(challengeId, msg.sender, userScore);
-    
-    // Mark position as closed
-    challenge.isRegistered[msg.sender] = true;
     
     emit Register(challengeId, msg.sender, userScore);    
   }
@@ -550,16 +547,6 @@ contract Stele is IStele {
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp >= challenge.endTime, "NE");
     require(!rewardsDistributed[challengeId], "AD");
-    
-    // Check if caller is in top 5 rankers
-    bool isTopRanker = false;
-    for (uint8 i = 0; i < 5; i++) {
-      if (challenge.topUsers[i] == msg.sender) {
-        isTopRanker = true;
-        break;
-      }
-    }
-    require(isTopRanker, "NT5");
 
     // Mark as distributed first to prevent reentrancy
     rewardsDistributed[challengeId] = true;
