@@ -42,8 +42,7 @@ async function main() {
   console.log("Proposer role granted to governor");
 
   // Grant executor role to everyone (address zero)
-  const executorTx = await timeLock.grantRole(executorRole, 
-    ethers.ZeroAddress);
+  const executorTx = await timeLock.grantRole(executorRole, "0x0000000000000000000000000000000000000000");
   await executorTx.wait();
   console.log("Executor role granted to everyone");
 

@@ -6,7 +6,7 @@ async function main() {
   // Arbitrum
   const wethTokenAddress = "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"; // WETH
   const usdTokenAddress = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"; // USDC
-  const timeLockAddress = "0xeaeE546f06f52d0657742415d1b950a23E421Ed1";
+  const timeLockAddress = "0x807A096d87B2C19Ed8DEC5B9c9e67368ad872502";
   const steleTokenAddress = "0xB4fB28A64C946c909D86388Be279F8222Fd42599"; // Stele Token
 
   console.log(`💰 WETH: ${wethTokenAddress}`);
