@@ -151,7 +151,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
     uint256 challengeStartTime,
     uint256 seedMoney
   ) {
-    require(_exists(tokenId), "TNE"); // Token Not Exists
+    require(_ownerOf(tokenId) != address(0), "TNE"); // Token Not Exists
     
     PerformanceNFT memory nft = performanceNFTs[tokenId];
     return (
@@ -209,7 +209,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
 
   // Get token metadata URI with investment period, return rate, and ranking information
   function tokenURI(uint256 tokenId) public view override returns (string memory) {
-    require(_exists(tokenId), "TNE");
+    require(_ownerOf(tokenId) != address(0), "TNE");
     
     PerformanceNFT memory nft = performanceNFTs[tokenId];
     int256 profitLossPercent = calculateProfitLossPercentage(nft.finalScore, nft.seedMoney);
@@ -270,7 +270,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
   }
   
   function getApproved(uint256 tokenId) public view override(ERC721, IERC721) returns (address) {
-    require(_exists(tokenId), "TNE");
+    require(_ownerOf(tokenId) != address(0), "TNE");
     return address(0); // Always return zero address for soulbound tokens
   }
   
@@ -289,7 +289,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
     address boundTo,
     string memory reason
   ) {
-    require(_exists(tokenId), "TNE");
+    require(_ownerOf(tokenId) != address(0), "TNE");
     return (true, ownerOf(tokenId), "Performance NFT bound to achievement owner");
   }
 
@@ -301,7 +301,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
     uint8 rank,
     uint256 blockTimestamp
   ) {
-    if (!_exists(tokenId)) {
+    if (_ownerOf(tokenId) == address(0)) {
       return (false, 0, address(0), 0, 0);
     }
     
@@ -384,7 +384,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
 
   // Check if token exists
   function exists(uint256 tokenId) external view returns (bool) {
-    return _exists(tokenId);
+    return _ownerOf(tokenId) != address(0);
   }
 
   // supportsInterface is handled by the override above
