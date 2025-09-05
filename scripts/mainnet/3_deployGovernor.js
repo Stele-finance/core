@@ -41,11 +41,11 @@ async function main() {
   await proposerTx.wait();
   console.log("Proposer role granted to governor");
 
-  // Grant executor role to governor only (secure configuration)
-  // This ensures only passed governance proposals can be executed
-  const executorTx = await timeLock.grantRole(executorRole, governorAddress);
+  // Grant executor role to everyone (address zero)
+  const executorTx = await timeLock.grantRole(executorRole, 
+    ethers.ZeroAddress);
   await executorTx.wait();
-  console.log("Executor role granted to governor only");
+  console.log("Executor role granted to everyone");
 
   // Revoke admin role from deployer
   const revokeTx = await timeLock.revokeRole(adminRole, deployer.address);
