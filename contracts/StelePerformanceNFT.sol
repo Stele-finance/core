@@ -40,7 +40,6 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
   mapping(address => mapping(uint256 => uint256)) public userNFTsByIndex;
   mapping(address => uint256) public userNFTCount;
   mapping(uint256 => mapping(address => bool)) public hasClaimedNFT; // challengeId => user => claimed
-  uint256[] private _allTokens; // For enumerable functionality
 
 
   modifier onlySteleContract() {
@@ -127,7 +126,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
     // Mark as claimed
     hasClaimedNFT[challengeId][user] = true;
     
-    // Mint NFT using OpenZeppelin's _mint function (ERC721Enumerable handles _allTokens)
+    // Mint NFT using OpenZeppelin's _mint function
     _mint(user, tokenId);
     
     // Update custom mappings for user enumeration
@@ -191,12 +190,6 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
     }
   }
 
-  // Convert timestamp to date string (simple implementation)
-  function _timestampToDate(uint256 timestamp) internal pure returns (string memory) {
-    // Simple implementation - just return timestamp as string
-    return Strings.toString(timestamp);
-  }
-
   // Get image name based on rank
   function getImageName(uint8 rank) internal pure returns (string memory) {
     if (rank == 1) return "1st.png";
@@ -224,7 +217,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
     string memory part1 = string(abi.encodePacked(
       '{"name":"Stele Performance NFT #', Strings.toString(tokenId),
       '","description":"Invested for ', periodText, 
-      ' starting from ', _timestampToDate(nft.challengeStartTime), 
+      ' starting from ', Strings.toString(nft.challengeStartTime), 
       ' and achieved ', rankText, 
       ' place out of ', totalUsersText,
       ' participants with ', returnRateText, 
