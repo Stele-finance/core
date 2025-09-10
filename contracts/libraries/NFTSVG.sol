@@ -109,19 +109,29 @@ library NFTSVG {
     }
 
     function generateInvestmentSummary(SVGParams memory params) internal pure returns (string memory) {
-        uint256 finalValue = params.finalScore;
-        uint256 profit = finalValue > params.seedMoney ? finalValue - params.seedMoney : 0;
-        
-        return string(abi.encodePacked(
-            '<g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">',
-                '<text x="24" y="270" font-size="14" font-weight="500" fill="#9ca3af">Initial Investment</text>',
-                '<text x="276" y="270" font-size="14" font-weight="600" fill="#f9fafb" text-anchor="end">$', formatAmount(params.seedMoney), '</text>',
-                '<text x="24" y="295" font-size="14" font-weight="500" fill="#9ca3af">Current Value</text>',
-                '<text x="276" y="295" font-size="14" font-weight="600" fill="#f9fafb" text-anchor="end">$', formatAmount(finalValue), '</text>',
-                '<text x="24" y="320" font-size="14" font-weight="500" fill="#9ca3af">Profit</text>',
-                '<text x="276" y="320" font-size="14" font-weight="600" fill="#10b981" text-anchor="end">+$', formatAmount(profit), '</text>',
-            '</g>'
-        ));
+        if (params.finalScore >= params.seedMoney) {
+            return string(abi.encodePacked(
+                '<g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">',
+                    '<text x="24" y="270" font-size="14" font-weight="500" fill="#9ca3af">Initial Investment</text>',
+                    '<text x="276" y="270" font-size="14" font-weight="600" fill="#f9fafb" text-anchor="end">$', formatAmount(params.seedMoney), '</text>',
+                    '<text x="24" y="295" font-size="14" font-weight="500" fill="#9ca3af">Current Value</text>',
+                    '<text x="276" y="295" font-size="14" font-weight="600" fill="#f9fafb" text-anchor="end">$', formatAmount(params.finalScore), '</text>',
+                    '<text x="24" y="320" font-size="14" font-weight="500" fill="#9ca3af">Profit/Loss</text>',
+                    '<text x="276" y="320" font-size="14" font-weight="600" fill="#10b981" text-anchor="end">+$', formatAmount(params.finalScore - params.seedMoney), '</text>',
+                '</g>'
+            ));
+        } else {
+            return string(abi.encodePacked(
+                '<g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">',
+                    '<text x="24" y="270" font-size="14" font-weight="500" fill="#9ca3af">Initial Investment</text>',
+                    '<text x="276" y="270" font-size="14" font-weight="600" fill="#f9fafb" text-anchor="end">$', formatAmount(params.seedMoney), '</text>',
+                    '<text x="24" y="295" font-size="14" font-weight="500" fill="#9ca3af">Current Value</text>',
+                    '<text x="276" y="295" font-size="14" font-weight="600" fill="#f9fafb" text-anchor="end">$', formatAmount(params.finalScore), '</text>',
+                    '<text x="24" y="320" font-size="14" font-weight="500" fill="#9ca3af">Profit/Loss</text>',
+                    '<text x="276" y="320" font-size="14" font-weight="600" fill="#ef4444" text-anchor="end">-$', formatAmount(params.seedMoney - params.finalScore), '</text>',
+                '</g>'
+            ));
+        }
     }
 
     function generateAchievementBadge() internal pure returns (string memory) {
@@ -164,12 +174,18 @@ library NFTSVG {
     }
 
     function formatAmount(uint256 amount) internal pure returns (string memory) {
-        if (amount >= 1e21) {
-            return string(abi.encodePacked((amount / 1e21).toString(), "K"));
-        } else if (amount >= 1e18) {
-            return (amount / 1e18).toString();
+        // USDC has 6 decimals, so 1e6 = 1 USD
+        if (amount >= 1e12) { // >= 1,000,000 USD (1M)
+            return string(abi.encodePacked((amount / 1e12).toString(), "M"));
+        } else if (amount >= 1e11) { // >= 100,000 USD (100K)  
+            return string(abi.encodePacked((amount / 1e9).toString(), "K"));
+        } else if (amount >= 1e6) { // >= 1 USD  
+            return (amount / 1e6).toString();
         } else {
-            return amount.toString();
+            // Less than 1 USD, show with decimals
+            uint256 dollars = amount / 1e6;
+            uint256 cents = (amount % 1e6) / 1e4; // 2 decimal places
+            return string(abi.encodePacked(dollars.toString(), ".", formatDecimals(cents)));
         }
     }
 

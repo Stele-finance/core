@@ -215,7 +215,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
 
     // Build JSON in two parts to avoid stack too deep error
     string memory part1 = string(abi.encodePacked(
-      '{"name":"Stele Performance NFT #', Strings.toString(tokenId),
+      '{"name":"Trading Performance NFT #', Strings.toString(tokenId),
       '","description":"Invested for ', periodText, 
       ' starting from ', Strings.toString(nft.challengeStartTime), 
       ' and achieved ', rankText, 
