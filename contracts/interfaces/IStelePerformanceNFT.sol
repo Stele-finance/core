@@ -45,9 +45,7 @@ interface IStelePerformanceNFT {
   // Contract management functions
   function owner() external view returns (address);
   function steleContract() external view returns (address);
-  function baseImageURI() external view returns (string memory);
   function transferOwnership(address newOwner) external;
-  function setBaseImageURI(string calldata _baseImageURI) external;
   
   // NFT ownership functions
   function ownerOf(uint256 tokenId) external view returns (address);

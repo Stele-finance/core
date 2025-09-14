@@ -26,7 +26,6 @@ library NFTSVG {
             '<svg width="300" height="400" viewBox="0 0 300 400" xmlns="http://www.w3.org/2000/svg">',
             generateDefs(),
             generateCard(),
-            generateHeader(),
             generateTitle(),
             generateRankBadge(params.rank),
             generateStatsGrid(params),
@@ -62,9 +61,6 @@ library NFTSVG {
         ));
     }
 
-    function generateHeader() internal pure returns (string memory) {
-        return '';
-    }
 
     function generateTitle() internal pure returns (string memory) {
         return string(abi.encodePacked(
@@ -134,9 +130,6 @@ library NFTSVG {
         }
     }
 
-    function generateAchievementBadge() internal pure returns (string memory) {
-        return '';
-    }
 
     function generateFooter() internal pure returns (string memory) {
         return '<text x="150" y="365" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="12" font-weight="500" fill="#9ca3af" text-anchor="middle">Powered by Stele Protocol</text>';
@@ -203,22 +196,4 @@ library NFTSVG {
         return "th";
     }
 
-    function generateTokenURI(SVGParams memory params) internal pure returns (string memory) {
-        string memory svg = generateSVG(params);
-        string memory json = string(abi.encodePacked(
-            '{"name":"Stele Challenge NFT #', params.challengeId.toString(),
-            '","description":"Achievement NFT for Stele Protocol challenge performance. Rank ', uint256(params.rank).toString(),
-            ' out of ', uint256(params.totalUsers).toString(), ' participants with ', formatReturnRate(params.profitLossPercent), ' return rate.',
-            '","image":"data:image/svg+xml;base64,', Base64.encode(bytes(svg)),
-            '","attributes":[',
-                '{"trait_type":"Challenge Type","value":"', getChallengePeriodText(params.challengeType), '"},',
-                '{"trait_type":"Rank","value":', uint256(params.rank).toString(), '},',
-                '{"trait_type":"Return Rate","value":"', formatReturnRate(params.profitLossPercent), '"},',
-                '{"trait_type":"Total Participants","value":', uint256(params.totalUsers).toString(), '},',
-                '{"trait_type":"Challenge ID","value":', params.challengeId.toString(), '}',
-            ']}'
-        ));
-        
-        return string(abi.encodePacked("data:application/json;base64,", Base64.encode(bytes(json))));
-    }
 }

@@ -629,7 +629,8 @@ contract Stele is IStele {
     
     // Validate challenge exists and has ended
     require(challenge.startTime > 0, "CNE"); // Challenge Not Exists
-    require(block.timestamp >= challenge.endTime, "NE"); // Not Ended
+    
+    // TODO require(block.timestamp >= challenge.endTime, "NE"); // Not Ended
     
     // Check if caller is in top 5
     uint8 userRank = 0;
