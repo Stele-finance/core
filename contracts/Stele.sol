@@ -624,13 +624,9 @@ contract Stele is IStele {
   // Mint Performance NFT for top 5 users after getRewards execution
   function mintPerformanceNFT(uint256 challengeId) external override {
     require(performanceNFTContract != address(0), "NNC"); // NFT contract Not set
-    
     Challenge storage challenge = challenges[challengeId];
-    
-    // Validate challenge exists and has ended
     require(challenge.startTime > 0, "CNE"); // Challenge Not Exists
-    
-    // TODO require(block.timestamp >= challenge.endTime, "NE"); // Not Ended
+    require(block.timestamp >= challenge.endTime, "NE"); // Not Ended
     
     // Check if caller is in top 5
     uint8 userRank = 0;
