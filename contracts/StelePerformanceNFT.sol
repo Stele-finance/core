@@ -30,8 +30,10 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable {
   // Events
   event PerformanceNFTMinted(uint256 indexed tokenId, uint256 indexed challengeId, address indexed user, uint8 rank, uint256 returnRate);
   event TransferAttemptBlocked(uint256 indexed tokenId, address from, address to, string reason);
+  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
   // State variables
+  address public owner;
   address public steleContract;
   
   // NFT storage
@@ -42,12 +44,18 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable {
   mapping(uint256 => mapping(address => bool)) public hasClaimedNFT; // challengeId => user => claimed
 
 
+  modifier onlyOwner() {
+    require(msg.sender == owner, "NO"); // Not Owner
+    _;
+  }
+
   modifier onlySteleContract() {
     require(msg.sender == steleContract, "NSC"); // Not Stele Contract
     _;
   }
 
   constructor(address _steleContract) ERC721("Stele Performance NFT", "SPNFT") {
+    owner = msg.sender;
     steleContract = _steleContract;
   }
 
@@ -419,6 +427,13 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable {
   // Check if token exists
   function exists(uint256 tokenId) external view returns (bool) {
     return _ownerOf(tokenId) != address(0);
+  }
+
+  // Transfer ownership
+  function transferOwnership(address newOwner) external onlyOwner {
+    require(newOwner != address(0), "NZ"); // Not Zero address
+    emit OwnershipTransferred(owner, newOwner);
+    owner = newOwner;
   }
 
   // supportsInterface is handled by the override above
