@@ -4,7 +4,7 @@ async function main() {
   console.log("🚀 Starting StelePerformanceNFT Deployment...\n");
 
   // Arbitrum - Stele contract address (must be deployed already)
-  const steleAddress = "0x153Ec6893379d18e2D136566D066Fb386A5599Bf"; // Replace with actual Stele contract address
+  const steleAddress = "0xD017dd389c0F07B9bC382aBA8467F00efE285FD8"; // Replace with actual Stele contract address
   
   console.log(`📊 Stele Contract: ${steleAddress}\n`);
 
