@@ -3,10 +3,10 @@ const { ethers } = require("hardhat");
 async function main() {
   console.log("🚀 Starting Stele Ecosystem Deployment...\n");
 
-  // Arbitrum
+  // Mainnet
   const wethTokenAddress = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"; // WETH
   const usdTokenAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"; // USDC
-  const timeLockAddress = "0xB4fB28A64C946c909D86388Be279F8222Fd42599";
+  const timeLockAddress = "0x424C778736a5Ced286a5FAac8657a1e4C5571a23";
   const steleTokenAddress = "0xc4f1E00cCfdF3a068e2e6853565107ef59D96089"; // Stele Token
 
   console.log(`💰 WETH: ${wethTokenAddress}`);
