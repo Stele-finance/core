@@ -202,9 +202,9 @@ library PriceOracle {
     }
 
     // Function to get quote from pool (may revert)
-    function getQuoteFromPool(address pool, uint128 baseAmount, address baseToken, address quoteToken) 
+    function getQuoteFromPool(address pool, uint128 baseAmount, address baseToken, address quoteToken)
         internal view returns (uint256) {
-        uint32 secondsAgo = 1800; // 30 minutes TWAP
+        uint32 secondsAgo = 300; // 5 minutes TWAP
         int24 tick = getTWAPTick(pool, secondsAgo);
         return getQuoteAtTick(tick, baseAmount, baseToken, quoteToken);
     }
