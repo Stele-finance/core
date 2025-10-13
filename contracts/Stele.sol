@@ -1,9 +1,10 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.28;
 
 import './interfaces/IERC20Minimal.sol';
 import './interfaces/IStele.sol';
 import {PriceOracle, IUniswapV3Factory} from './libraries/PriceOracle.sol';
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 struct Token {
   address tokenAddress;
@@ -44,7 +45,7 @@ interface IStelePerformanceNFT {
   function canMintNFT(uint256 challengeId, address user) external view returns (bool);
 }
 
-contract Stele is IStele {
+contract Stele is IStele, ReentrancyGuard {
   using PriceOracle for *;
   
   address public constant uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
@@ -286,7 +287,7 @@ contract Stele is IStele {
   }
 
   // Join an existing challenge
-  function joinChallenge(uint256 challengeId) external override {
+  function joinChallenge(uint256 challengeId) external override nonReentrant {
     Challenge storage challenge = challenges[challengeId];
     
     // Check if challenge exists and is still active
@@ -391,16 +392,21 @@ contract Stele is IStele {
     require(tokenInPriceUSD > 0, "FP0");
     require(tokenOutPriceUSD > 0, "TP0");
 
-    // Calculate swap amount with decimal adjustment
-    uint256 toAmount = (amount * tokenInPriceUSD) / tokenOutPriceUSD;
+    // Calculate swap amount with high precision using mulDiv
+    // Step 1: Convert amount to USD value
+    uint256 valueInUSD = PriceOracle.mulDiv(
+      amount,
+      tokenInPriceUSD,
+      10 ** tokenInDecimals
+    );
 
-    // Adjust for decimal differences
-    if (tokenOutDecimals > tokenInDecimals) {
-      toAmount = toAmount * 10 ** (tokenOutDecimals - tokenInDecimals);
-    } else if (tokenInDecimals > tokenOutDecimals) {
-      toAmount = toAmount / 10 ** (tokenInDecimals - tokenOutDecimals);
-    }
-    
+    // Step 2: Convert USD value to output token amount
+    uint256 toAmount = PriceOracle.mulDiv(
+      valueInUSD,
+      10 ** tokenOutDecimals,
+      tokenOutPriceUSD
+    );
+
     // Ensure swap amount is not zero
     require(toAmount > 0, "TA0");
     
@@ -541,7 +547,7 @@ contract Stele is IStele {
   }
 
   // Claim rewards after challenge ends
-  function getRewards(uint256 challengeId) external override {
+  function getRewards(uint256 challengeId) external override nonReentrant {
     Challenge storage challenge = challenges[challengeId];
     // Validate challenge
     require(challenge.startTime > 0, "CNE");
