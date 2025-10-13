@@ -449,16 +449,18 @@ contract Stele is IStele, ReentrancyGuard {
   // Register latest performance
   function register(uint256 challengeId) public override {
     Challenge storage challenge = challenges[challengeId];
-    
+
     // Validate challenge and user
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp < challenge.endTime, "E");
-    
+
+    // Check if user has joined the challenge
+    UserPortfolio memory portfolio = challenge.portfolios[msg.sender];
+    require(portfolio.tokens.length > 0, "NJ"); // Not Joined
+
     // Calculate total portfolio value USD using ETH as intermediate
     uint256 userScore = 0;
     uint256 ethPriceUSD = PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken); // Get ETH price once for efficiency
-    
-    UserPortfolio memory portfolio = challenge.portfolios[msg.sender];
     for (uint256 i = 0; i < portfolio.tokens.length; i++) {
       address tokenAddress = portfolio.tokens[i].tokenAddress;
       uint8 _tokenDecimals = IERC20Minimal(tokenAddress).decimals();
@@ -583,29 +585,38 @@ contract Stele is IStele, ReentrancyGuard {
     
     // Only distribute rewards if there are actual rankers
     if (actualRankerCount > 0) {
-      // Distribute rewards to each ranker
-      for (uint8 i = 0; i < actualRankerCount; i++) {
-        address userAddress = validRankers[i];
-        
-        // Calculate reward based on original ratio
-        require(totalInitialRewardWeight > 0, "IW");
-        // Use direct calculation to avoid precision loss
-        uint256 rewardAmount = (challenge.totalRewards * initialRewards[i]) / totalInitialRewardWeight;
-        
-        // Cannot distribute more than the available balance
-        if (rewardAmount > undistributed) {
+      // Distribute rewards in reverse order (rank 5 to rank 1)
+      // This ensures rank 1 gets all remaining funds to avoid precision loss
+      for (uint8 i = actualRankerCount; i > 0; i--) {
+        uint8 idx = i - 1; // Convert to 0-indexed
+        address userAddress = validRankers[idx];
+
+        uint256 rewardAmount;
+
+        // Give all remaining funds to the first ranker (rank 1) to avoid precision loss
+        if (idx == 0) {
           rewardAmount = undistributed;
+        } else {
+          // Calculate reward based on original ratio
+          require(totalInitialRewardWeight > 0, "IW");
+          // Use direct calculation to avoid precision loss
+          rewardAmount = (challenge.totalRewards * initialRewards[idx]) / totalInitialRewardWeight;
+
+          // Cannot distribute more than the available balance
+          if (rewardAmount > undistributed) {
+            rewardAmount = undistributed;
+          }
         }
-        
+
         if (rewardAmount > 0) {
           // Update state before external call (Checks-Effects-Interactions pattern)
           undistributed = undistributed - rewardAmount;
-          
+
           bool success = usdTokenContract.transfer(userAddress, rewardAmount);
           require(success, "RTF");
 
           emit Reward(challengeId, userAddress, rewardAmount);
-          
+
           // Distribute Stele token bonus to each ranker
           distributeSteleBonus(challengeId, userAddress, getRewardsBonus, "RW");
         }
