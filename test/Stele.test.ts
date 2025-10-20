@@ -20,17 +20,21 @@ describe("Stele Protocol Tests", function () {
   // Mainnet addresses (forked)
   const USDC_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
   const WETH_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+  const LINK_ADDRESS = "0x514910771AF9Ca656af840dff83E8264EcF986CA";
+  const WBTC_ADDRESS = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
   const USDC_WHALE = "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503"; // Circle USDC reserve
 
   // Contract addresses
   let usdcContract: any;
   let wethContract: any;
+  let linkContract: any;
+  let wbtcContract: any;
 
   before(async function () {
     // Get signers
     [owner, user1, user2, user3] = await ethers.getSigners();
 
-    // Connect to USDC and WETH contracts
+    // Connect to USDC, WETH, LINK, and WBTC contracts
     usdcContract = await ethers.getContractAt(
       "IERC20Minimal",
       USDC_ADDRESS
@@ -38,6 +42,14 @@ describe("Stele Protocol Tests", function () {
     wethContract = await ethers.getContractAt(
       "IERC20Minimal",
       WETH_ADDRESS
+    );
+    linkContract = await ethers.getContractAt(
+      "IERC20Minimal",
+      LINK_ADDRESS
+    );
+    wbtcContract = await ethers.getContractAt(
+      "IERC20Minimal",
+      WBTC_ADDRESS
     );
 
     console.log("Deploying contracts...");
@@ -66,6 +78,11 @@ describe("Stele Protocol Tests", function () {
 
     // Set NFT contract in Stele
     await stele.setPerformanceNFTContract(await performanceNFT.getAddress());
+
+    // Add LINK and WBTC as investable tokens
+    await stele.setToken(LINK_ADDRESS);
+    await stele.setToken(WBTC_ADDRESS);
+    console.log("Added LINK and WBTC as investable tokens");
 
     // Transfer STL tokens to Stele contract for bonuses
     const steleTokenBalance = ethers.parseEther("10000000"); // 10M tokens
@@ -216,6 +233,91 @@ describe("Stele Protocol Tests", function () {
       // Verify that swap happened with reasonable precision
       // (exact amounts depend on current market prices)
       expect(afterPortfolio[0].length).to.be.gte(beforePortfolio[0].length);
+    });
+
+    it("Should perform multiple swaps: USDC -> WETH -> LINK -> WBTC", async function () {
+      // Get initial portfolio
+      const initialPortfolio = await stele.getUserPortfolio(challengeId, user1.address);
+      console.log("Initial portfolio tokens:", initialPortfolio[0]);
+      console.log("Initial portfolio amounts:", initialPortfolio[1]);
+
+      // Step 1: Swap USDC to WETH (100 USDC)
+      const usdcToWethAmount = ethers.parseUnits("100", 6); // 100 USDC
+      await stele.connect(user1).swap(
+        challengeId,
+        USDC_ADDRESS,
+        WETH_ADDRESS,
+        usdcToWethAmount
+      );
+
+      const afterFirstSwap = await stele.getUserPortfolio(challengeId, user1.address);
+      console.log("After USDC->WETH swap:");
+      console.log("Tokens:", afterFirstSwap[0]);
+      console.log("Amounts:", afterFirstSwap[1]);
+
+      // Find WETH balance
+      let wethBalance = 0n;
+      for (let i = 0; i < afterFirstSwap[0].length; i++) {
+        if (afterFirstSwap[0][i].toLowerCase() === WETH_ADDRESS.toLowerCase()) {
+          wethBalance = afterFirstSwap[1][i];
+          break;
+        }
+      }
+      expect(wethBalance).to.be.gt(0);
+      console.log("WETH balance:", ethers.formatEther(wethBalance), "WETH");
+
+      // Step 2: Swap WETH to LINK (use 50% of WETH balance)
+      const wethToLinkAmount = wethBalance / 2n;
+      await stele.connect(user1).swap(
+        challengeId,
+        WETH_ADDRESS,
+        LINK_ADDRESS,
+        wethToLinkAmount
+      );
+
+      const afterSecondSwap = await stele.getUserPortfolio(challengeId, user1.address);
+      console.log("After WETH->LINK swap:");
+      console.log("Tokens:", afterSecondSwap[0]);
+      console.log("Amounts:", afterSecondSwap[1]);
+
+      // Find LINK balance
+      let linkBalance = 0n;
+      for (let i = 0; i < afterSecondSwap[0].length; i++) {
+        if (afterSecondSwap[0][i].toLowerCase() === LINK_ADDRESS.toLowerCase()) {
+          linkBalance = afterSecondSwap[1][i];
+          break;
+        }
+      }
+      expect(linkBalance).to.be.gt(0);
+      console.log("LINK balance:", ethers.formatEther(linkBalance), "LINK");
+
+      // Step 3: Swap LINK to WBTC (use 50% of LINK balance)
+      const linkToWbtcAmount = linkBalance / 2n;
+      await stele.connect(user1).swap(
+        challengeId,
+        LINK_ADDRESS,
+        WBTC_ADDRESS,
+        linkToWbtcAmount
+      );
+
+      const finalPortfolio = await stele.getUserPortfolio(challengeId, user1.address);
+      console.log("After LINK->WBTC swap (Final portfolio):");
+      console.log("Tokens:", finalPortfolio[0]);
+      console.log("Amounts:", finalPortfolio[1]);
+
+      // Find WBTC balance
+      let wbtcBalance = 0n;
+      for (let i = 0; i < finalPortfolio[0].length; i++) {
+        if (finalPortfolio[0][i].toLowerCase() === WBTC_ADDRESS.toLowerCase()) {
+          wbtcBalance = finalPortfolio[1][i];
+          break;
+        }
+      }
+      expect(wbtcBalance).to.be.gt(0);
+      console.log("WBTC balance:", ethers.formatUnits(wbtcBalance, 8), "WBTC");
+
+      // Verify portfolio has multiple tokens (USDC, WETH, LINK, WBTC)
+      expect(finalPortfolio[0].length).to.be.gte(4);
     });
   });
 
