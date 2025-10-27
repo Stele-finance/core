@@ -3,9 +3,9 @@ const { ethers } = require("hardhat");
 async function main() {
   console.log("🚀 Starting StelePerformanceNFT Deployment...\n");
 
-  // Arbitrum - Stele contract address (must be deployed already)
-  const steleAddress = "0xC9B7A308654B3c5604F1ebaF7AC9D28FA423E5EB"; // Replace with actual Stele contract address
-  
+  // Mainnet - Stele contract address (must be deployed already)
+  const steleAddress = "0xD1402Bf2462EDe6cA1F4CEF7F0Fa82F1636cdeC4"; // Replace with actual Stele contract address
+
   console.log(`📊 Stele Contract: ${steleAddress}\n`);
 
   // Deploy StelePerformanceNFT contract with Stele address
@@ -19,7 +19,7 @@ async function main() {
   // Verify setup
   console.log("🔍 Verifying deployment...");
   const linkedSteleAddress = await nftContract.steleContract();
-  
+
   console.log("🎯 Verification Results:");
   console.log(`   NFT.steleContract: ${linkedSteleAddress}`);
   console.log(`   Stele address match: ${linkedSteleAddress === steleAddress}\n`);
