@@ -28,7 +28,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable {
   using NFTSVG for NFTSVG.SVGParams;
 
   // Events
-  event PerformanceNFTMinted(uint256 indexed tokenId, uint256 indexed challengeId, address indexed user, uint8 rank, uint256 returnRate);
+  event PerformanceNFTMinted(uint256 indexed tokenId, uint256 indexed challengeId, ChallengeType challengeType, address indexed user, uint32 totalUsers, uint8 rank, uint256 seedMoney, uint256 finalScore, uint256 returnRate);
   event TransferAttemptBlocked(uint256 indexed tokenId, address from, address to, string reason);
   event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
@@ -127,9 +127,9 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable {
     // Update custom mappings for user enumeration
     userNFTsByIndex[user][userNFTCount[user]] = tokenId;
     userNFTCount[user]++;
-    
-    emit PerformanceNFTMinted(tokenId, challengeId, user, rank, returnRate);
-    
+
+    emit PerformanceNFTMinted(tokenId, challengeId, challengeType, user, totalUsers, rank, initialValue, finalScore, returnRate);
+
     return tokenId;
   }
 
