@@ -21,7 +21,7 @@ struct PerformanceNFT {
 }
 
 // Challenge type definition
-enum ChallengeType { OneWeek, OneMonth, ThreeMonths, SixMonths, OneYear }
+enum ChallengeType { OneWeek }
 
 contract StelePerformanceNFT is ERC721, ERC721Enumerable {
   using Strings for uint256;
@@ -160,10 +160,6 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable {
   // Get challenge period text
   function getChallengePeriodText(ChallengeType challengeType) internal pure returns (string memory) {
     if (challengeType == ChallengeType.OneWeek) return "1 week";
-    if (challengeType == ChallengeType.OneMonth) return "1 month";
-    if (challengeType == ChallengeType.ThreeMonths) return "3 months";
-    if (challengeType == ChallengeType.SixMonths) return "6 months";
-    if (challengeType == ChallengeType.OneYear) return "1 year";
     return "unknown period";
   }
 

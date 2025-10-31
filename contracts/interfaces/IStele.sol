@@ -3,10 +3,10 @@ pragma solidity ^0.8.28;
 
 interface IStele {
   // Enums
-  enum ChallengeType { OneWeek, OneMonth, ThreeMonths, SixMonths, OneYear }
+  enum ChallengeType { OneWeek }
   
   // Events
-  event SteleCreated(address owner, address usdToken, uint8 maxTokens, uint256 seedMoney, uint256 entryFee, uint256[5] rewardRatio);
+  event SteleCreated(address owner, address usdToken, uint256 seedMoney, uint256 entryFee, uint256[5] rewardRatio);
   event AddToken(address tokenAddress);
   event Create(uint256 challengeId, ChallengeType challengeType, uint256 seedMoney, uint256 entryFee);
   event Join(uint256 challengeId, address user, uint256 seedMoney);
@@ -24,7 +24,6 @@ interface IStele {
   function uni() external view returns (address);
   function link() external view returns (address);
   function usdTokenDecimals() external view returns (uint8);
-  function maxTokens() external view returns (uint8);
   function seedMoney() external view returns (uint256);
   function entryFee() external view returns (uint256);
   function rewardRatio(uint256 index) external view returns (uint256);

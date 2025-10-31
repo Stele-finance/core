@@ -50,7 +50,7 @@ contract Stele is IStele, ReentrancyGuard {
   
   // State variables
   address public override owner;
-  
+
   address public override usdToken;
   address public override weth9;
   address public override wbtc;
@@ -60,7 +60,6 @@ contract Stele is IStele, ReentrancyGuard {
   uint256 public override seedMoney;
   uint256 public override entryFee;
   uint8 public override usdTokenDecimals;
-  uint8 public override maxTokens;
   uint256[5] public override rewardRatio;
   mapping(address => bool) public override isInvestable;
   mapping(uint256 => bool) public override rewardsDistributed;
@@ -90,8 +89,7 @@ contract Stele is IStele, ReentrancyGuard {
     link = _link;
 
     usdTokenDecimals = IERC20Minimal(_usdToken).decimals(); 
-    maxTokens = 10;
-    seedMoney = 1000 * 10**usdTokenDecimals;
+    seedMoney = 10000 * 10**usdTokenDecimals;
     entryFee = 5 * 10**usdTokenDecimals; // 5 USD
     rewardRatio = [50, 26, 13, 7, 4];
     challengeCounter = 0;
@@ -108,16 +106,12 @@ contract Stele is IStele, ReentrancyGuard {
     isInvestable[link] = true;
     emit AddToken(link);
 
-    emit SteleCreated(owner, usdToken, maxTokens, seedMoney, entryFee, rewardRatio);
+    emit SteleCreated(owner, usdToken, seedMoney, entryFee, rewardRatio);
   }
 
   // Duration in seconds for each challenge type
   function getDuration(IStele.ChallengeType challengeType) internal pure returns (uint256) {
     if (challengeType == IStele.ChallengeType.OneWeek) return 7 days;
-    if (challengeType == IStele.ChallengeType.OneMonth) return 30 days;
-    if (challengeType == IStele.ChallengeType.ThreeMonths) return 90 days;
-    if (challengeType == IStele.ChallengeType.SixMonths) return 180 days;
-    if (challengeType == IStele.ChallengeType.OneYear) return 365 days;
     return 0;
   }
 
@@ -334,7 +328,6 @@ contract Stele is IStele, ReentrancyGuard {
     }
     
     if (!foundTarget) {
-      require(portfolio.tokens.length < maxTokens, "FA");
       portfolio.tokens.push(Token({
         tokenAddress: tokenOut,
         amount: toAmount

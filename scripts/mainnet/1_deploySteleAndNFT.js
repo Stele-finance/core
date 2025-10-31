@@ -56,15 +56,14 @@ async function main() {
   console.log(`   NFT.steleContract: ${linkedSteleAddress}`);
   console.log(`   Addresses match: ${linkedNFTAddress === nftAddress && linkedSteleAddress === steleAddress}\n`);
 
-  // Step 5: Transfer ownership to TimeLock (if available)
+  // Step 5: Transfer ownership to zero address
   try {
-    // Try to get TimeLock address from previous deployment
-    console.log("🏛️ Step 5: Transferring ownership to TimeLock...");
-    const steleOwnershipTx = await stele.transferOwnership(zeroAddress);
+    console.log("🏛️ Step 5: Transferring ownership to zero address...");
+    const steleOwnershipTx = await stele.renounceOwnership();
     await steleOwnershipTx.wait();
     console.log(`✅ Stele ownership transferred to: ${zeroAddress}\n`);
   } catch (error) {
-    console.log("⚠️  TimeLock transfer skipped (update address manually)\n");
+    console.log("⚠️  Transfer ownership to zero address skipped (update address manually)\n");
   }
 
   // Final Summary
