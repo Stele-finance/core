@@ -6,12 +6,17 @@ async function main() {
   // Mainnet
   const wethTokenAddress = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"; // WETH
   const usdTokenAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"; // USDC
-  const timeLockAddress = "0x1F55E11F7a39D3ca3Ea28109b35d173905Cd614e";
-  const steleTokenAddress = "0xc4f1E00cCfdF3a068e2e6853565107ef59D96089"; // Stele Token
+  const wbtcTokenAddress = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"; // WBTC
+  const uniTokenAddress = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984"; // UNI
+  const linkTokenAddress = "0x514910771AF9Ca656af840dff83E8264EcF986CA"; // LINK
+
+  const zeroAddress = "0x0000000000000000000000000000000000000000";
 
   console.log(`💰 WETH: ${wethTokenAddress}`);
   console.log(`💵 USDC: ${usdTokenAddress}`);
-  console.log(`🎯 Stele Token: ${steleTokenAddress}\n`);
+  console.log(`🎯 WBTC: ${wbtcTokenAddress}`);
+  console.log(`🎨 UNI: ${uniTokenAddress}`);
+  console.log(`🔗 LINK: ${linkTokenAddress}\n`);
 
   // Step 1: Deploy Stele contract (without NFT contract address)
   console.log("📝 Step 1: Deploying Stele contract...");
@@ -19,7 +24,9 @@ async function main() {
   const stele = await SteleFactory.deploy(
     wethTokenAddress,
     usdTokenAddress,
-    steleTokenAddress
+    wbtcTokenAddress,
+    uniTokenAddress,
+    linkTokenAddress
   );
   await stele.deployed();
   const steleAddress = await stele.address;
@@ -53,13 +60,9 @@ async function main() {
   try {
     // Try to get TimeLock address from previous deployment
     console.log("🏛️ Step 5: Transferring ownership to TimeLock...");
-    const steleOwnershipTx = await stele.transferOwnership(timeLockAddress);
+    const steleOwnershipTx = await stele.transferOwnership(zeroAddress);
     await steleOwnershipTx.wait();
-    console.log(`✅ Stele ownership transferred to: ${timeLockAddress}`);
-    
-    const nftOwnershipTx = await nftContract.transferOwnership(timeLockAddress);
-    await nftOwnershipTx.wait();
-    console.log(`✅ NFT ownership transferred to: ${timeLockAddress}\n`);
+    console.log(`✅ Stele ownership transferred to: ${zeroAddress}\n`);
   } catch (error) {
     console.log("⚠️  TimeLock transfer skipped (update address manually)\n");
   }
@@ -80,7 +83,9 @@ async function main() {
       StelePerformanceNFT: nftAddress,
       WETH: wethTokenAddress,
       USDC: usdTokenAddress,
-      SteleToken: steleTokenAddress
+      WBTC: wbtcTokenAddress,
+      UNI: uniTokenAddress,
+      LINK: linkTokenAddress
     },
     transactions: {
       stele: stele.deploymentTransaction,

@@ -45,15 +45,18 @@ interface IStelePerformanceNFT {
   function canMintNFT(uint256 challengeId, address user) external view returns (bool);
 }
 
-contract Stele is IStele, ReentrancyGuard {
-  using PriceOracle for *;
-  
+contract Stele is IStele, ReentrancyGuard {  
   address public constant uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
   
   // State variables
   address public override owner;
+  
   address public override usdToken;
   address public override weth9;
+  address public override wbtc;
+  address public override uni;
+  address public override link;
+
   uint256 public override seedMoney;
   uint256 public override entryFee;
   uint8 public override usdTokenDecimals;
@@ -61,12 +64,6 @@ contract Stele is IStele, ReentrancyGuard {
   uint256[5] public override rewardRatio;
   mapping(address => bool) public override isInvestable;
   mapping(uint256 => bool) public override rewardsDistributed;
-
-  // Stele Token Bonus System
-  address public override steleToken;
-  uint256 public override createBonus;
-  uint256 public override joinBonus;
-  uint256 public override getRewardsBonus;
 
   // Challenge repository
   mapping(uint256 => Challenge) public challenges;
@@ -83,43 +80,35 @@ contract Stele is IStele, ReentrancyGuard {
   }
   
   // Contract constructor
-  constructor(address _weth9, address _usdToken, address _steleToken) {
+  constructor(address _weth9, address _usdToken, address _wbtc, address _uni, address _link) {
     owner = msg.sender;
+
     usdToken = _usdToken;
     weth9 = _weth9;
+    wbtc = _wbtc;
+    uni = _uni;
+    link = _link;
+
     usdTokenDecimals = IERC20Minimal(_usdToken).decimals(); 
     maxTokens = 10;
     seedMoney = 1000 * 10**usdTokenDecimals;
-    entryFee = 10 * 10**usdTokenDecimals; // 10 USD
+    entryFee = 5 * 10**usdTokenDecimals; // 5 USD
     rewardRatio = [50, 26, 13, 7, 4];
     challengeCounter = 0;
-    // Initialize Stele Token Bonus
-    steleToken = _steleToken;
-    createBonus = 1000 * 10**18; // 1000 STL tokens
-    joinBonus = 500 * 10**18; // 500 STL tokens
-    getRewardsBonus = 50000 * 10**18; // 50000 STL tokens
 
     // Initialize investable tokens directly
     isInvestable[weth9] = true;
     emit AddToken(weth9);
     isInvestable[usdToken] = true;
     emit AddToken(usdToken);
+    isInvestable[wbtc] = true;
+    emit AddToken(wbtc);
+    isInvestable[uni] = true;
+    emit AddToken(uni);
+    isInvestable[link] = true;
+    emit AddToken(link);
 
     emit SteleCreated(owner, usdToken, maxTokens, seedMoney, entryFee, rewardRatio);
-  }
-
-  // Transfer ownership of the contract to a new account
-  function transferOwnership(address newOwner) external override onlyOwner {
-    require(newOwner != address(0), "NZ");
-    emit OwnershipTransferred(owner, newOwner);
-    owner = newOwner;
-  }
-
-  // Set Performance NFT contract address
-  function setPerformanceNFTContract(address _nftContract) external override onlyOwner {
-    require(_nftContract != address(0), "NZ");
-    performanceNFTContract = _nftContract;
-    emit PerformanceNFTContractSet(_nftContract);
   }
 
   // Duration in seconds for each challenge type
@@ -130,80 +119,6 @@ contract Stele is IStele, ReentrancyGuard {
     if (challengeType == IStele.ChallengeType.SixMonths) return 180 days;
     if (challengeType == IStele.ChallengeType.OneYear) return 365 days;
     return 0;
-  }
-
-  // Reward distribution ratio setting function
-  function setRewardRatio(uint256[5] calldata _rewardRatio) external override onlyOwner {
-    uint256 sum = 0;
-    for (uint i = 0; i < 5; i++) {
-        require(_rewardRatio[i] > 0, "IR");
-        sum += _rewardRatio[i];
-    }
-    require(sum == 100, "IS");
-    
-    // Ensure reward ratio is in descending order (1st > 2nd > 3rd > 4th > 5th)
-    for (uint i = 0; i < 4; i++) {
-        require(_rewardRatio[i] > _rewardRatio[i + 1], "RD"); // Reward ratio must be Descending
-    }
-    
-    rewardRatio = _rewardRatio;
-    emit RewardRatio(_rewardRatio);
-  }
-  
-  // Entry fee setting function
-  function setEntryFee(uint256 _entryFee) external override onlyOwner {
-    entryFee = _entryFee;
-    emit EntryFee(_entryFee);
-  }
-  
-  // Initial capital setting function
-  function setSeedMoney(uint256 _seedMoney) external override onlyOwner {
-    seedMoney = _seedMoney;
-    emit SeedMoney(_seedMoney);
-  }
-  
-  // Investable token setting function
-  function setToken(address tokenAddress) external override onlyOwner {
-    require(tokenAddress != address(0), "ZA"); // Zero Address
-    require(!isInvestable[tokenAddress], "AT"); // Already Token
-    
-    isInvestable[tokenAddress] = true;
-    emit AddToken(tokenAddress);
-  }
-  
-  // Non-investable token setting function
-  function resetToken(address tokenAddress) external override onlyOwner {
-    require(tokenAddress != address(0), "ZA"); // Zero Address
-    require(isInvestable[tokenAddress], "NT"); // Not investableToken
-    require(tokenAddress != usdToken, "UCR"); // USD token Cannot be Removed
-    require(tokenAddress != weth9, "WCR"); // WETH Cannot be Removed
-
-    isInvestable[tokenAddress] = false;
-    emit RemoveToken(tokenAddress);
-  }
-
-  // Max tokens setting function
-  function setMaxTokens(uint8 _maxTokens) external override onlyOwner {
-    maxTokens = _maxTokens;
-    emit MaxTokens(_maxTokens);
-  }
-
-  // Create challenge bonus setting function
-  function setCreateBonus(uint256 _createBonus) external onlyOwner {
-    createBonus = _createBonus;
-    emit CreateBonusUpdated(_createBonus);
-  }
-
-  // Join challenge bonus setting function
-  function setJoinBonus(uint256 _joinBonus) external onlyOwner {
-    joinBonus = _joinBonus;
-    emit JoinBonusUpdated(_joinBonus);
-  }
-
-  // Get rewards bonus setting function
-  function setGetRewardsBonus(uint256 _getRewardsBonus) external onlyOwner {
-    getRewardsBonus = _getRewardsBonus;
-    emit GetRewardsBonusUpdated(_getRewardsBonus);
   }
 
   // Get challenge basic info (cannot return mappings in interface)
@@ -281,9 +196,6 @@ contract Stele is IStele, ReentrancyGuard {
     }
     
     emit Create(challengeId, challengeType, challenge.seedMoney, challenge.entryFee);
-    
-    // Distribute Stele token bonus for creating challenge
-    distributeSteleBonus(challengeId, msg.sender, createBonus, "CR");
   }
 
   // Join an existing challenge
@@ -326,9 +238,6 @@ contract Stele is IStele, ReentrancyGuard {
     challenge.totalUsers = uint32(challenge.totalUsers + 1);
 
     emit Join(challengeId, msg.sender, challenge.seedMoney);
-
-    // Distribute Stele token bonus for joining challenge
-    distributeSteleBonus(challengeId, msg.sender, joinBonus, "JCR");
 
     register(challengeId); // Auto-register after joining to update ranking
   }
@@ -548,6 +457,26 @@ contract Stele is IStele, ReentrancyGuard {
     }
   }
 
+  // Transfer ownership of the contract to a new account
+  function transferOwnership(address newOwner) external override onlyOwner {
+    require(newOwner != address(0), "NZ");
+    emit OwnershipTransferred(owner, newOwner);
+    owner = newOwner;
+  }
+
+  // Renounce ownership of the contract
+  function renounceOwnership() external onlyOwner {
+    emit OwnershipTransferred(owner, address(0));
+    owner = address(0);
+  }
+
+  // Set Performance NFT contract address
+  function setPerformanceNFTContract(address _nftContract) external override onlyOwner {
+    require(_nftContract != address(0), "NZ");
+    performanceNFTContract = _nftContract;
+    emit PerformanceNFTContractSet(_nftContract);
+  }
+
   // Claim rewards after challenge ends
   function getRewards(uint256 challengeId) external override nonReentrant {
     Challenge storage challenge = challenges[challengeId];
@@ -616,26 +545,9 @@ contract Stele is IStele, ReentrancyGuard {
           require(success, "RTF");
 
           emit Reward(challengeId, userAddress, rewardAmount);
-
-          // Distribute Stele token bonus to each ranker
-          distributeSteleBonus(challengeId, userAddress, getRewardsBonus, "RW");
         }
       }
     }
-  }
-
-  // Internal function to distribute Stele token bonus
-  function distributeSteleBonus(uint256 challengeId, address recipient, uint256 amount, string memory action) internal {    
-    IERC20Minimal steleTokenContract = IERC20Minimal(steleToken);
-    uint256 contractBalance = steleTokenContract.balanceOf(address(this));
-    
-    if (contractBalance >= amount) {
-      bool success = steleTokenContract.transfer(recipient, amount);
-      if (success) {
-        emit SteleTokenBonus(challengeId, recipient, action, amount);
-      }
-    }
-    // Silently fail if insufficient balance - no revert to avoid breaking main functionality
   }
 
   // Mint Performance NFT for top 5 users after getRewards execution
