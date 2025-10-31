@@ -11,9 +11,11 @@ const config: HardhatUserConfig = {
         settings: {
           optimizer: {
               enabled: true,
-              runs: 10000,
+              runs: 470,
           },
+          viaIR: true
         },
+
       },
     ],
   },
@@ -22,7 +24,7 @@ const config: HardhatUserConfig = {
       chainId: 31337,
       forking: {
         url: "https://mainnet.infura.io/v3/" + process.env.INFURA_API_KEY,
-        //blockNumber: 14390000
+        blockNumber: 23000000
       },
       //allowUnlimitedContractSize: true,
     },
@@ -52,7 +54,7 @@ const config: HardhatUserConfig = {
     }
   },
   mocha: {
-    timeout: 100000
+    timeout: 300000 // 5 minutes
   }
 };
 

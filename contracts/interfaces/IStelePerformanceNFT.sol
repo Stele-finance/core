@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.28;
 
 // Challenge type definition
@@ -41,14 +41,9 @@ interface IStelePerformanceNFT {
   );
   
   function canMintNFT(uint256 challengeId, address user) external view returns (bool);
-  function hasClaimedNFT(uint256 challengeId, address user) external view returns (bool);
   
   // Contract management functions
-  function owner() external view returns (address);
   function steleContract() external view returns (address);
-  function baseImageURI() external view returns (string memory);
-  function transferOwnership(address newOwner) external;
-  function setBaseImageURI(string calldata _baseImageURI) external;
   
   // NFT ownership functions
   function ownerOf(uint256 tokenId) external view returns (address);

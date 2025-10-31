@@ -6,8 +6,8 @@ async function main() {
   console.log("Account balance:", (await ethers.provider.getBalance(deployer.address)).toString());
 
   // Arbitrum
-  const tokenAddress = "0x08C9c9EE6F161c6056060BF6AC7fE85e38638619"; // Stele Token
-  const timeLockAddress = "0x03263016ef6dCB815A0F8Ef799264a2e9Bb6a858";
+  const tokenAddress = "0xB4fB28A64C946c909D86388Be279F8222Fd42599"; // Stele Token
+  const timeLockAddress = "0x558c323B0a739bbfFfeAe9D4b05aF40210a39708";
   // Governor values
   const QUORUM_PERCENTAGE = 4; // 4%
   const VOTING_PERIOD = 272; // 1 hour for initial testing period, default : 7 days (2,400,000 blocks)
@@ -23,8 +23,8 @@ async function main() {
     VOTING_PERIOD,
     VOTING_DELAY
   );
-  await governor.deploymentTransaction().wait();
-  const governorAddress = governor.target;
+  await governor.deployed();
+  const governorAddress = await governor.address;
   console.log("SteleGovernor deployed to:", governorAddress);
 
   // Setup roles
@@ -42,7 +42,7 @@ async function main() {
   console.log("Proposer role granted to governor");
 
   // Grant executor role to everyone (address zero)
-  const executorTx = await timeLock.grantRole(executorRole, ethers.ZeroAddress);
+  const executorTx = await timeLock.grantRole(executorRole, "0x0000000000000000000000000000000000000000");
   await executorTx.wait();
   console.log("Executor role granted to everyone");
 

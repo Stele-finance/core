@@ -7,10 +7,8 @@ async function main() {
 
   const SteleToken = await ethers.getContractFactory("Token");
   const token = await SteleToken.deploy();
-  const receipt = await token.deploymentTransaction().wait();
-  
-  // get the deployed contract address
-  const tokenAddress = token.target;
+  await token.deployed();
+  const tokenAddress = await token.address;
   console.log("SteleToken deployed to:", tokenAddress);
 }
 

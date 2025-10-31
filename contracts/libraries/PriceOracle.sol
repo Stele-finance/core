@@ -1,21 +1,13 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.28;
 
-// Direct Uniswap V3 interfaces without library imports
+// Direct Uniswap V3 interfaces
 interface IUniswapV3Factory {
-    function getPool(address tokenA, address tokenB, uint24 fee) 
+    function getPool(address tokenA, address tokenB, uint24 fee)
         external view returns (address pool);
 }
 
 interface IUniswapV3Pool {
-    function observe(uint32[] calldata secondsAgos)
-        external
-        view
-        returns (
-            int56[] memory tickCumulatives, 
-            uint160[] memory secondsPerLiquidityCumulativeX128s
-        );
-    
     function slot0() external view returns (
         uint160 sqrtPriceX96,
         int24 tick,
@@ -27,96 +19,19 @@ interface IUniswapV3Pool {
     );
 }
 
+/// @title Price Oracle Library
+/// @notice Library for calculating Spot Prices using Uniswap V3
+/// @dev Provides functions for spot price calculation, tick math, and price conversion
 library PriceOracle {
-    
-    // Get USD price from ETH (1 ETH = ? USD)
-    function getETHPriceUSD(address uniswapV3Factory, address weth9, address usdToken) 
-        internal view returns (uint256) {
-        uint16[3] memory fees = [500, 3000, 10000];
-        uint256 quoteAmount = 0;
 
-        for (uint256 i=0; i<fees.length; i++) {
-            address pool = IUniswapV3Factory(uniswapV3Factory).getPool(weth9, usdToken, uint24(fees[i]));
-            if (pool == address(0)) {
-                continue;
-            }
-
-            uint256 _quoteAmount = getQuoteFromPool(pool, uint128(1 * 10**18), weth9, usdToken);
-            if (_quoteAmount > 0 && quoteAmount < _quoteAmount) {
-                quoteAmount = _quoteAmount;
-            }
-        }
-
-        return quoteAmount > 0 ? quoteAmount : 3000 * 1e6; // Fallback to $3000 if no pool available
+    // Standard Uniswap V3 fee tiers - using function to return array
+    function getFeeTiers() private pure returns (uint16[3] memory) {
+        return [uint16(500), uint16(3000), uint16(10000)]; // 0.05%, 0.3%, 1%
     }
 
-    // Get token price in ETH
-    function getTokenPriceETH(address uniswapV3Factory, address baseToken, address weth9, uint256 baseAmount) 
-        internal view returns (uint256) { 
-        if (baseToken == weth9) {
-            return baseAmount; // 1:1 ratio for WETH to ETH
-        }
-
-        uint16[3] memory fees = [500, 3000, 10000];
-        uint256 quoteAmount = 0;
-
-        for (uint256 i=0; i<fees.length; i++) {
-            address pool = IUniswapV3Factory(uniswapV3Factory).getPool(baseToken, weth9, uint24(fees[i]));
-            if (pool == address(0)) {
-                continue;
-            }
-
-            uint256 _quoteAmount = getQuoteFromPool(pool, uint128(baseAmount), baseToken, weth9);
-            if (_quoteAmount > 0 && quoteAmount < _quoteAmount) {
-                quoteAmount = _quoteAmount;
-            }
-        }
-
-        return quoteAmount;
-    }
-
-    // TWAP calculation using direct interface calls
-    function getTWAPTick(address pool, uint32 secondsAgo) internal view returns (int24 timeWeightedAverageTick) {
-        if (secondsAgo == 0) {
-            (, timeWeightedAverageTick, , , , , ) = IUniswapV3Pool(pool).slot0();
-            return timeWeightedAverageTick;
-        }
-
-        uint32[] memory secondsAgos = new uint32[](2);
-        secondsAgos[0] = secondsAgo;
-        secondsAgos[1] = 0;
-
-        (int56[] memory tickCumulatives, ) = IUniswapV3Pool(pool).observe(secondsAgos);
-        
-        int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
-        timeWeightedAverageTick = int24(tickCumulativesDelta / int56(uint56(secondsAgo)));
-
-        // Always round to negative infinity
-        if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(uint56(secondsAgo)) != 0)) {
-            timeWeightedAverageTick--;
-        }
-    }
-
-    // Convert tick to price ratio
-    function getQuoteAtTick(int24 tick, uint128 baseAmount, address baseToken, address quoteToken) 
-        internal pure returns (uint256 quoteAmount) {
-        uint160 sqrtRatioX96 = getSqrtRatioAtTick(tick);
-        
-        // Calculate the price ratio from sqrtRatioX96
-        if (sqrtRatioX96 <= type(uint128).max) {
-            uint256 ratioX192 = uint256(sqrtRatioX96) * sqrtRatioX96;
-            quoteAmount = baseToken < quoteToken
-                ? mulDiv(ratioX192, baseAmount, 1 << 192)
-                : mulDiv(1 << 192, baseAmount, ratioX192);
-        } else {
-            uint256 ratioX128 = mulDiv(sqrtRatioX96, sqrtRatioX96, 1 << 64);
-            quoteAmount = baseToken < quoteToken
-                ? mulDiv(ratioX128, baseAmount, 1 << 128)
-                : mulDiv(1 << 128, baseAmount, ratioX128);
-        }
-    }
-
-    // Get sqrt ratio at tick (simplified version)
+    /// @notice Convert tick to sqrt price ratio
+    /// @param tick The tick value
+    /// @return sqrtPriceX96 The sqrt price in X96 format
     function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160 sqrtPriceX96) {
         uint256 absTick = tick < 0 ? uint256(-int256(tick)) : uint256(int256(tick));
         require(absTick <= uint256(int256(887272)), 'T');
@@ -147,7 +62,11 @@ library PriceOracle {
         sqrtPriceX96 = uint160((ratio >> 32) + (ratio % (1 << 32) == 0 ? 0 : 1));
     }
 
-    // Full precision multiplication
+    /// @notice Full precision multiplication
+    /// @param a First number
+    /// @param b Second number
+    /// @param denominator Denominator for division
+    /// @return result The result of (a * b) / denominator
     function mulDiv(uint256 a, uint256 b, uint256 denominator) internal pure returns (uint256 result) {
         uint256 prod0;
         uint256 prod1;
@@ -201,16 +120,145 @@ library PriceOracle {
         return result;
     }
 
-    // Function to get quote from pool (may revert)
-    function getQuoteFromPool(address pool, uint128 baseAmount, address baseToken, address quoteToken) 
-        internal view returns (uint256) {
-        uint32 secondsAgo = 1800; // 30 minutes TWAP
-        int24 tick = getTWAPTick(pool, secondsAgo);
+    /// @notice Convert tick to price quote
+    /// @param tick The tick value
+    /// @param baseAmount The base amount to convert
+    /// @param baseToken The base token address
+    /// @param quoteToken The quote token address
+    /// @return quoteAmount The calculated quote amount
+    function getQuoteAtTick(
+        int24 tick,
+        uint128 baseAmount,
+        address baseToken,
+        address quoteToken
+    ) internal pure returns (uint256 quoteAmount) {
+        uint160 sqrtRatioX96 = getSqrtRatioAtTick(tick);
+
+        // Calculate the price ratio from sqrtRatioX96
+        if (sqrtRatioX96 <= type(uint128).max) {
+            uint256 ratioX192 = uint256(sqrtRatioX96) * sqrtRatioX96;
+            quoteAmount = baseToken < quoteToken
+                ? mulDiv(ratioX192, baseAmount, 1 << 192)
+                : mulDiv(1 << 192, baseAmount, ratioX192);
+        } else {
+            uint256 ratioX128 = mulDiv(sqrtRatioX96, sqrtRatioX96, 1 << 64);
+            quoteAmount = baseToken < quoteToken
+                ? mulDiv(ratioX128, baseAmount, 1 << 128)
+                : mulDiv(1 << 128, baseAmount, ratioX128);
+        }
+    }
+
+    /// @notice Get quote from pool using spot price
+    /// @param pool The pool address
+    /// @param baseAmount The base amount
+    /// @param baseToken The base token address
+    /// @param quoteToken The quote token address
+    /// @return quoteAmount The calculated quote amount
+    function getQuoteFromPool(
+        address pool,
+        uint128 baseAmount,
+        address baseToken,
+        address quoteToken
+    ) internal view returns (uint256 quoteAmount) {
+        // Use spot price (like Uniswap SwapRouter)
+        (, int24 tick, , , , , ) = IUniswapV3Pool(pool).slot0();
+
         return getQuoteAtTick(tick, baseAmount, baseToken, quoteToken);
     }
 
-    // Precision multiplication helper function
-    function precisionMul(uint256 x, uint256 y, uint256 precision) internal pure returns (uint256) {
-        return (x * y) / precision;
+    /// @notice Get best quote across multiple fee tiers using spot price
+    /// @param factory The Uniswap V3 factory address
+    /// @param tokenA First token address
+    /// @param tokenB Second token address
+    /// @param amountIn Input amount
+    /// @return bestQuote The best quote found across all pools
+    function getBestQuote(
+        address factory,
+        address tokenA,
+        address tokenB,
+        uint128 amountIn
+    ) internal view returns (uint256 bestQuote) {
+        bestQuote = 0;
+
+        uint16[3] memory feeTiers = getFeeTiers();
+        for (uint256 i = 0; i < feeTiers.length; i++) {
+            address pool = IUniswapV3Factory(factory).getPool(tokenA, tokenB, uint24(feeTiers[i]));
+            if (pool == address(0)) {
+                continue;
+            }
+
+            // Note: Direct call without try-catch since we're in a library
+            // The calling contract should handle exceptions
+            uint256 quote = getQuoteFromPool(pool, amountIn, tokenA, tokenB);
+            if (quote > bestQuote) {
+                bestQuote = quote;
+            }
+        }
+    }
+
+    /// @notice Get ETH price in USD using spot price
+    /// @dev Reverts if no valid price is available
+    /// @param factory The Uniswap V3 factory address
+    /// @param weth9 WETH9 token address
+    /// @param usdToken USD token address (e.g., USDC)
+    /// @return ethPriceUSD ETH price in USD
+    function getETHPriceUSD(
+        address factory,
+        address weth9,
+        address usdToken
+    ) internal view returns (uint256 ethPriceUSD) {
+        uint256 quote = getBestQuote(
+            factory,
+            weth9,
+            usdToken,
+            uint128(1e18) // 1 ETH
+        );
+
+        require(quote > 0, "No valid ETH price available");
+        return quote;
+    }
+
+    /// @notice Get token price in ETH using spot price
+    /// @param factory The Uniswap V3 factory address
+    /// @param token Token address
+    /// @param weth9 WETH9 token address
+    /// @param amount Token amount
+    /// @return ethAmount ETH amount equivalent
+    function getTokenPriceETH(
+        address factory,
+        address token,
+        address weth9,
+        uint256 amount
+    ) internal view returns (uint256 ethAmount) {
+        if (token == weth9) {
+            return amount; // 1:1 ratio for WETH to ETH
+        }
+
+        return getBestQuote(
+            factory,
+            token,
+            weth9,
+            uint128(amount)
+        );
+    }
+
+    /// @notice High precision multiplication: (a * b) / c
+    /// @param a First number
+    /// @param b Second number
+    /// @param c Divisor
+    /// @return result The result of (a * b) / c with high precision
+    function precisionMul(uint256 a, uint256 b, uint256 c) internal pure returns (uint256) {
+        if (a == 0 || b == 0) return 0;
+        require(c > 0, "Division by zero");
+
+        uint256 PRECISION_SCALE = 1e18;
+
+        // Check if we can safely multiply with precision scale
+        if (a <= type(uint256).max / b && (a * b) <= type(uint256).max / PRECISION_SCALE) {
+            return (a * b * PRECISION_SCALE) / (c * PRECISION_SCALE);
+        }
+
+        // Fallback to standard calculation to avoid overflow
+        return (a * b) / c;
     }
 }

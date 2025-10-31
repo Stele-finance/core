@@ -1,10 +1,11 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
+import "./libraries/NFTSVG.sol";
 
 // NFT metadata structure for performance records
 struct PerformanceNFT {
@@ -22,17 +23,16 @@ struct PerformanceNFT {
 // Challenge type definition
 enum ChallengeType { OneWeek, OneMonth, ThreeMonths, SixMonths, OneYear }
 
-contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
+contract StelePerformanceNFT is ERC721, ERC721Enumerable {
   using Strings for uint256;
+  using NFTSVG for NFTSVG.SVGParams;
 
   // Events
-  event PerformanceNFTMinted(uint256 indexed tokenId, uint256 indexed challengeId, address indexed user, uint8 rank, uint256 returnRate);
+  event PerformanceNFTMinted(uint256 indexed tokenId, uint256 indexed challengeId, ChallengeType challengeType, address indexed user, uint32 totalUsers, uint8 rank, uint256 seedMoney, uint256 finalScore, uint256 returnRate);
   event TransferAttemptBlocked(uint256 indexed tokenId, address from, address to, string reason);
-  event BaseImageURIUpdated(string newBaseImageURI);
 
   // State variables
   address public steleContract;
-  string public baseImageURI;
   
   // NFT storage
   uint256 private _nextTokenId = 1;
@@ -40,8 +40,6 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
   mapping(address => mapping(uint256 => uint256)) public userNFTsByIndex;
   mapping(address => uint256) public userNFTCount;
   mapping(uint256 => mapping(address => bool)) public hasClaimedNFT; // challengeId => user => claimed
-  uint256[] private _allTokens; // For enumerable functionality
-
 
   modifier onlySteleContract() {
     require(msg.sender == steleContract, "NSC"); // Not Stele Contract
@@ -50,19 +48,6 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
 
   constructor(address _steleContract) ERC721("Stele Performance NFT", "SPNFT") {
     steleContract = _steleContract;
-    baseImageURI = "https://stele.io/nft/challenge/";
-  }
-
-  // Transfer ownership (only owner) - Override Ownable
-  function transferOwnership(address newOwner) public override onlyOwner {
-    require(newOwner != address(0), "ZA"); // Zero Address
-    super.transferOwnership(newOwner);
-  }
-
-  // Set base image URI (only owner)
-  function setBaseImageURI(string calldata _baseImageURI) external onlyOwner {
-    baseImageURI = _baseImageURI;
-    emit BaseImageURIUpdated(_baseImageURI);
   }
 
   // Calculate return rate based on final score and initial value (basis points: 10000 = 100%)
@@ -127,15 +112,15 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
     // Mark as claimed
     hasClaimedNFT[challengeId][user] = true;
     
-    // Mint NFT using OpenZeppelin's _mint function (ERC721Enumerable handles _allTokens)
+    // Mint NFT using OpenZeppelin's _mint function
     _mint(user, tokenId);
     
     // Update custom mappings for user enumeration
     userNFTsByIndex[user][userNFTCount[user]] = tokenId;
     userNFTCount[user]++;
-    
-    emit PerformanceNFTMinted(tokenId, challengeId, user, rank, returnRate);
-    
+
+    emit PerformanceNFTMinted(tokenId, challengeId, challengeType, user, totalUsers, rank, initialValue, finalScore, returnRate);
+
     return tokenId;
   }
 
@@ -151,7 +136,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
     uint256 challengeStartTime,
     uint256 seedMoney
   ) {
-    require(_exists(tokenId), "TNE"); // Token Not Exists
+    require(_ownerOf(tokenId) != address(0), "TNE"); // Token Not Exists
     
     PerformanceNFT memory nft = performanceNFTs[tokenId];
     return (
@@ -182,64 +167,112 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
     return "unknown period";
   }
 
-  // Get return rate text
-  function getReturnRateText(int256 profitLossPercent) internal pure returns (string memory) {
+  // Format return rate for display
+  function formatReturnRate(int256 profitLossPercent) internal pure returns (string memory) {
     if (profitLossPercent >= 0) {
-      return string(abi.encodePacked("+", Strings.toString(uint256(profitLossPercent) / 10000), ".", Strings.toString((uint256(profitLossPercent) % 10000) / 100), "%"));
+      uint256 absPercent = uint256(profitLossPercent);
+      uint256 wholePart = absPercent / 10000;
+      uint256 decimalPart = (absPercent % 10000) / 100;
+      
+      string memory decimal = decimalPart < 10 
+        ? string(abi.encodePacked("0", Strings.toString(decimalPart)))
+        : Strings.toString(decimalPart);
+      
+      return string(abi.encodePacked(
+        "+",
+        Strings.toString(wholePart),
+        ".",
+        decimal,
+        "%"
+      ));
     } else {
-      return string(abi.encodePacked("-", Strings.toString(uint256(-profitLossPercent) / 10000), ".", Strings.toString((uint256(-profitLossPercent) % 10000) / 100), "%"));
+      uint256 absPercent = uint256(-profitLossPercent);
+      uint256 wholePart = absPercent / 10000;
+      uint256 decimalPart = (absPercent % 10000) / 100;
+      
+      string memory decimal = decimalPart < 10 
+        ? string(abi.encodePacked("0", Strings.toString(decimalPart)))
+        : Strings.toString(decimalPart);
+      
+      return string(abi.encodePacked(
+        "-",
+        Strings.toString(wholePart),
+        ".",
+        decimal,
+        "%"
+      ));
     }
   }
 
-  // Convert timestamp to date string (simple implementation)
-  function _timestampToDate(uint256 timestamp) internal pure returns (string memory) {
-    // Simple implementation - just return timestamp as string
-    return Strings.toString(timestamp);
-  }
 
-  // Get image name based on rank
-  function getImageName(uint8 rank) internal pure returns (string memory) {
-    if (rank == 1) return "1st.png";
-    if (rank == 2) return "2nd.png";
-    if (rank == 3) return "3rd.png";
-    if (rank == 4) return "4th.png";
-    if (rank == 5) return "5th.png";
-    return "participant.png";
-  }
 
-  // Get token metadata URI with investment period, return rate, and ranking information
+  // Token URI with on-chain SVG image
   function tokenURI(uint256 tokenId) public view override returns (string memory) {
-    require(_exists(tokenId), "TNE");
-    
+    require(_ownerOf(tokenId) != address(0), "TNE");
+
     PerformanceNFT memory nft = performanceNFTs[tokenId];
     int256 profitLossPercent = calculateProfitLossPercentage(nft.finalScore, nft.seedMoney);
+
+    // Generate SVG image
+    NFTSVG.SVGParams memory svgParams = NFTSVG.SVGParams({
+      challengeId: nft.challengeId,
+      user: nft.user,
+      totalUsers: nft.totalUsers,
+      finalScore: nft.finalScore,
+      rank: nft.rank,
+      returnRate: nft.returnRate,
+      challengeType: uint256(nft.challengeType),
+      challengeStartTime: nft.challengeStartTime,
+      seedMoney: nft.seedMoney,
+      profitLossPercent: profitLossPercent
+    });
     
-    string memory periodText = getChallengePeriodText(nft.challengeType);
-    string memory returnRateText = getReturnRateText(profitLossPercent);
-    string memory imageUrl = string(abi.encodePacked(baseImageURI, getImageName(nft.rank)));
-    string memory rankText = Strings.toString(nft.rank);
-    string memory totalUsersText = Strings.toString(nft.totalUsers);
-
-    // Build JSON in two parts to avoid stack too deep error
-    string memory part1 = string(abi.encodePacked(
-      '{"name":"Stele Performance NFT #', Strings.toString(tokenId),
-      '","description":"Invested for ', periodText, 
-      ' starting from ', _timestampToDate(nft.challengeStartTime), 
-      ' and achieved ', rankText, 
-      ' place out of ', totalUsersText,
-      ' participants with ', returnRateText, 
-      ' return rate.","image":"', imageUrl, '"'
+    string memory svg = svgParams.generateSVG();
+    
+    string memory image = string(abi.encodePacked(
+      "data:image/svg+xml;base64,",
+      Base64.encode(bytes(svg))
     ));
-
-    string memory part2 = string(abi.encodePacked(
-      ',"attributes":[{"trait_type":"Challenge Period","value":"', periodText,
-      '"},{"trait_type":"Rank","value":', rankText,
-      '},{"trait_type":"Return Rate","value":"', returnRateText,
-      '"},{"trait_type":"Total Participants","value":', totalUsersText,
+    
+    string memory returnRateText = formatReturnRate(profitLossPercent);
+    string memory periodText = getChallengePeriodText(nft.challengeType);
+    
+    string memory json = string(abi.encodePacked(
+      '{"name":"Challenge #',
+      Strings.toString(nft.challengeId),
+      ' Performance Certificate",',
+      '"description":"Rank #',
+      Strings.toString(nft.rank),
+      ' in ',
+      periodText,
+      ' challenge with ',
+      returnRateText,
+      ' return rate",',
+      '"image":"',
+      image,
+      '",',
+      '"attributes":[',
+      '{"trait_type":"Challenge ID","value":',
+      Strings.toString(nft.challengeId),
+      '},',
+      '{"trait_type":"Rank","value":',
+      Strings.toString(nft.rank),
+      '},',
+      '{"trait_type":"Return Rate","value":"',
+      returnRateText,
+      '"},',
+      '{"trait_type":"Challenge Period","value":"',
+      periodText,
+      '"},',
+      '{"trait_type":"Total Participants","value":',
+      Strings.toString(nft.totalUsers),
       '}]}'
     ));
 
-    return string(abi.encodePacked(part1, part2));
+    return string(abi.encodePacked(
+      "data:application/json;base64,",
+      Base64.encode(bytes(json))
+    ));
   }
 
   // ============ SOULBOUND NFT FUNCTIONS ============
@@ -270,7 +303,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
   }
   
   function getApproved(uint256 tokenId) public view override(ERC721, IERC721) returns (address) {
-    require(_exists(tokenId), "TNE");
+    require(_ownerOf(tokenId) != address(0), "TNE");
     return address(0); // Always return zero address for soulbound tokens
   }
   
@@ -289,7 +322,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
     address boundTo,
     string memory reason
   ) {
-    require(_exists(tokenId), "TNE");
+    require(_ownerOf(tokenId) != address(0), "TNE");
     return (true, ownerOf(tokenId), "Performance NFT bound to achievement owner");
   }
 
@@ -301,7 +334,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
     uint8 rank,
     uint256 blockTimestamp
   ) {
-    if (!_exists(tokenId)) {
+    if (_ownerOf(tokenId) == address(0)) {
       return (false, 0, address(0), 0, 0);
     }
     
@@ -384,7 +417,7 @@ contract StelePerformanceNFT is ERC721, ERC721Enumerable, Ownable {
 
   // Check if token exists
   function exists(uint256 tokenId) external view returns (bool) {
-    return _exists(tokenId);
+    return _ownerOf(tokenId) != address(0);
   }
 
   // supportsInterface is handled by the override above

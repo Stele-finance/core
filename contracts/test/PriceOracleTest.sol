@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.28;
 
 import {PriceOracle, IUniswapV3Factory} from "../libraries/PriceOracle.sol";
@@ -6,7 +6,7 @@ import {PriceOracle, IUniswapV3Factory} from "../libraries/PriceOracle.sol";
 contract PriceOracleTest {
     using PriceOracle for *;
 
-    // Wrapper functions for testing the library
+    // Wrapper functions for testing the library with spot prices
     function getETHPriceUSD(
         address uniswapV3Factory,
         address weth9,
@@ -33,47 +33,20 @@ contract PriceOracleTest {
         return PriceOracle.getQuoteFromPool(pool, baseAmount, baseToken, quoteToken);
     }
 
-    function getTWAPTick(address pool, uint32 secondsAgo) external view returns (int24) {
-        return PriceOracle.getTWAPTick(pool, secondsAgo);
-    }
-
     function precisionMul(uint256 x, uint256 y, uint256 precision) external pure returns (uint256) {
         return PriceOracle.precisionMul(x, y, precision);
     }
 
-    // Custom TWAP functions for testing different time windows
-    function getETHPriceUSDWithCustomTWAP(
+    function getBestQuote(
         address uniswapV3Factory,
-        address weth9,
-        address usdToken,
-        uint32 secondsAgo
+        address tokenA,
+        address tokenB,
+        uint128 amountIn
     ) external view returns (uint256) {
-        uint16[3] memory fees = [500, 3000, 10000];
-        uint256 quoteAmount = 0;
-
-        for (uint256 i=0; i<fees.length; i++) {
-            address pool = IUniswapV3Factory(uniswapV3Factory).getPool(weth9, usdToken, uint24(fees[i]));
-            if (pool == address(0)) {
-                continue;
-            }
-
-            uint256 _quoteAmount = getQuoteFromPoolWithCustomTWAP(pool, uint128(1 * 10**18), weth9, usdToken, secondsAgo);
-            if (_quoteAmount > 0 && quoteAmount < _quoteAmount) {
-                quoteAmount = _quoteAmount;
-            }
-        }
-
-        return quoteAmount > 0 ? quoteAmount : 3000 * 1e6; // Fallback to $3000 if no pool available
+        return PriceOracle.getBestQuote(uniswapV3Factory, tokenA, tokenB, amountIn);
     }
 
-    function getQuoteFromPoolWithCustomTWAP(
-        address pool,
-        uint128 baseAmount,
-        address baseToken,
-        address quoteToken,
-        uint32 secondsAgo
-    ) public view returns (uint256) {
-        int24 tick = PriceOracle.getTWAPTick(pool, secondsAgo);
-        return PriceOracle.getQuoteAtTick(tick, baseAmount, baseToken, quoteToken);
+    function mulDiv(uint256 a, uint256 b, uint256 denominator) external pure returns (uint256) {
+        return PriceOracle.mulDiv(a, b, denominator);
     }
 }

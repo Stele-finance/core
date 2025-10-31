@@ -1,9 +1,10 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.28;
 
 import './interfaces/IERC20Minimal.sol';
 import './interfaces/IStele.sol';
 import {PriceOracle, IUniswapV3Factory} from './libraries/PriceOracle.sol';
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 struct Token {
   address tokenAddress;
@@ -26,7 +27,6 @@ struct Challenge {
   address[5] topUsers; // top 5 users
   uint256[5] scores; // scores of top 5 users
   mapping(address => UserPortfolio) portfolios;
-  mapping(address => bool) isRegistered;
 }
 
 // Interface for StelePerformanceNFT contract
@@ -45,10 +45,9 @@ interface IStelePerformanceNFT {
   function canMintNFT(uint256 challengeId, address user) external view returns (bool);
 }
 
-contract Stele is IStele {
+contract Stele is IStele, ReentrancyGuard {
   using PriceOracle for *;
   
-  address public constant swapRouter = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
   address public constant uniswapV3Factory = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
   
   // State variables
@@ -288,13 +287,12 @@ contract Stele is IStele {
   }
 
   // Join an existing challenge
-  function joinChallenge(uint256 challengeId) external override {
+  function joinChallenge(uint256 challengeId) external override nonReentrant {
     Challenge storage challenge = challenges[challengeId];
     
     // Check if challenge exists and is still active
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp < challenge.endTime, "E");
-    require(!challenge.isRegistered[msg.sender], "C");
     
     // Check if user has already joined
     require(challenge.portfolios[msg.sender].tokens.length == 0, "AJ");
@@ -331,6 +329,8 @@ contract Stele is IStele {
 
     // Distribute Stele token bonus for joining challenge
     distributeSteleBonus(challengeId, msg.sender, joinBonus, "JCR");
+
+    register(challengeId); // Auto-register after joining to update ranking
   }
 
   // Swap tokens within a challenge portfolio
@@ -340,7 +340,6 @@ contract Stele is IStele {
     // Validate challenge and user
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp < challenge.endTime, "E");
-    require(!challenge.isRegistered[msg.sender], "C");
     
     // Validate tokens
     require(tokenIn != tokenOut, "ST"); // Prevent same token swap
@@ -393,16 +392,21 @@ contract Stele is IStele {
     require(tokenInPriceUSD > 0, "FP0");
     require(tokenOutPriceUSD > 0, "TP0");
 
-    // Calculate swap amount with decimal adjustment
-    uint256 toAmount = (amount * tokenInPriceUSD) / tokenOutPriceUSD;
+    // Calculate swap amount with high precision using mulDiv
+    // Step 1: Convert amount to USD value
+    uint256 valueInUSD = PriceOracle.mulDiv(
+      amount,
+      tokenInPriceUSD,
+      10 ** tokenInDecimals
+    );
 
-    // Adjust for decimal differences
-    if (tokenOutDecimals > tokenInDecimals) {
-      toAmount = toAmount * 10 ** (tokenOutDecimals - tokenInDecimals);
-    } else if (tokenInDecimals > tokenOutDecimals) {
-      toAmount = toAmount / 10 ** (tokenInDecimals - tokenOutDecimals);
-    }
-    
+    // Step 2: Convert USD value to output token amount
+    uint256 toAmount = PriceOracle.mulDiv(
+      valueInUSD,
+      10 ** tokenOutDecimals,
+      tokenOutPriceUSD
+    );
+
     // Ensure swap amount is not zero
     require(toAmount > 0, "TA0");
     
@@ -438,22 +442,25 @@ contract Stele is IStele {
     }
 
     emit Swap(challengeId, msg.sender, tokenIn, tokenOut, amount, toAmount);
+
+    register(challengeId); // Auto-register after swap to update ranking
   }
 
-  // Register final performance and close position
-  function register(uint256 challengeId) external override {
+  // Register latest performance
+  function register(uint256 challengeId) public override {
     Challenge storage challenge = challenges[challengeId];
-    
+
     // Validate challenge and user
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp < challenge.endTime, "E");
-    require(!challenge.isRegistered[msg.sender], "C");
-    
+
+    // Check if user has joined the challenge
+    UserPortfolio memory portfolio = challenge.portfolios[msg.sender];
+    require(portfolio.tokens.length > 0, "NJ"); // Not Joined
+
     // Calculate total portfolio value USD using ETH as intermediate
     uint256 userScore = 0;
     uint256 ethPriceUSD = PriceOracle.getETHPriceUSD(uniswapV3Factory, weth9, usdToken); // Get ETH price once for efficiency
-    
-    UserPortfolio memory portfolio = challenge.portfolios[msg.sender];
     for (uint256 i = 0; i < portfolio.tokens.length; i++) {
       address tokenAddress = portfolio.tokens[i].tokenAddress;
       uint8 _tokenDecimals = IERC20Minimal(tokenAddress).decimals();
@@ -476,9 +483,6 @@ contract Stele is IStele {
     
     // Update ranking
     updateRanking(challengeId, msg.sender, userScore);
-    
-    // Mark position as closed
-    challenge.isRegistered[msg.sender] = true;
     
     emit Register(challengeId, msg.sender, userScore);    
   }
@@ -545,22 +549,12 @@ contract Stele is IStele {
   }
 
   // Claim rewards after challenge ends
-  function getRewards(uint256 challengeId) external override {
+  function getRewards(uint256 challengeId) external override nonReentrant {
     Challenge storage challenge = challenges[challengeId];
     // Validate challenge
     require(challenge.startTime > 0, "CNE");
     require(block.timestamp >= challenge.endTime, "NE");
     require(!rewardsDistributed[challengeId], "AD");
-    
-    // Check if caller is in top 5 rankers
-    bool isTopRanker = false;
-    for (uint8 i = 0; i < 5; i++) {
-      if (challenge.topUsers[i] == msg.sender) {
-        isTopRanker = true;
-        break;
-      }
-    }
-    require(isTopRanker, "NT5");
 
     // Mark as distributed first to prevent reentrancy
     rewardsDistributed[challengeId] = true;
@@ -591,29 +585,38 @@ contract Stele is IStele {
     
     // Only distribute rewards if there are actual rankers
     if (actualRankerCount > 0) {
-      // Distribute rewards to each ranker
-      for (uint8 i = 0; i < actualRankerCount; i++) {
-        address userAddress = validRankers[i];
-        
-        // Calculate reward based on original ratio
-        require(totalInitialRewardWeight > 0, "IW");
-        // Use direct calculation to avoid precision loss
-        uint256 rewardAmount = (challenge.totalRewards * initialRewards[i]) / totalInitialRewardWeight;
-        
-        // Cannot distribute more than the available balance
-        if (rewardAmount > undistributed) {
+      // Distribute rewards in reverse order (rank 5 to rank 1)
+      // This ensures rank 1 gets all remaining funds to avoid precision loss
+      for (uint8 i = actualRankerCount; i > 0; i--) {
+        uint8 idx = i - 1; // Convert to 0-indexed
+        address userAddress = validRankers[idx];
+
+        uint256 rewardAmount;
+
+        // Give all remaining funds to the first ranker (rank 1) to avoid precision loss
+        if (idx == 0) {
           rewardAmount = undistributed;
+        } else {
+          // Calculate reward based on original ratio
+          require(totalInitialRewardWeight > 0, "IW");
+          // Use direct calculation to avoid precision loss
+          rewardAmount = (challenge.totalRewards * initialRewards[idx]) / totalInitialRewardWeight;
+
+          // Cannot distribute more than the available balance
+          if (rewardAmount > undistributed) {
+            rewardAmount = undistributed;
+          }
         }
-        
+
         if (rewardAmount > 0) {
           // Update state before external call (Checks-Effects-Interactions pattern)
           undistributed = undistributed - rewardAmount;
-          
+
           bool success = usdTokenContract.transfer(userAddress, rewardAmount);
           require(success, "RTF");
 
           emit Reward(challengeId, userAddress, rewardAmount);
-          
+
           // Distribute Stele token bonus to each ranker
           distributeSteleBonus(challengeId, userAddress, getRewardsBonus, "RW");
         }
@@ -638,10 +641,7 @@ contract Stele is IStele {
   // Mint Performance NFT for top 5 users after getRewards execution
   function mintPerformanceNFT(uint256 challengeId) external override {
     require(performanceNFTContract != address(0), "NNC"); // NFT contract Not set
-    
     Challenge storage challenge = challenges[challengeId];
-    
-    // Validate challenge exists and has ended
     require(challenge.startTime > 0, "CNE"); // Challenge Not Exists
     require(block.timestamp >= challenge.endTime, "NE"); // Not Ended
     
