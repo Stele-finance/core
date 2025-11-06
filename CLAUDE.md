@@ -10,9 +10,6 @@ This is the Stele DeFi protocol - a decentralized investment challenge platform 
 
 - **Stele.sol**: Main protocol contract managing challenges, portfolio swaps, rankings, and rewards
 - **StelePerformanceNFT.sol**: Soulbound NFT contract for minting performance achievement tokens
-- **Token.sol**: ERC20 governance token contract for the protocol
-- **SteleGovernor.sol**: OpenZeppelin governance contract for protocol decisions
-- **TimeLock.sol**: Timelock controller for governance execution delays
 
 ### Key Components
 
@@ -58,17 +55,11 @@ npx hardhat test test/Stele.ts --network hardhat
 
 **Ethereum Mainnet:**
 ```bash
-npx hardhat run scripts/mainnet/1_deployToken.js --network mainnet
-npx hardhat run scripts/mainnet/2_deployTimeLock.js --network mainnet
-npx hardhat run scripts/mainnet/3_deployGovernor.js --network mainnet
 npx hardhat run scripts/mainnet/4_deploySteleAndNFT.js --network mainnet
 ```
 
 **Arbitrum Network:**
 ```bash
-npx hardhat run scripts/arbitrum/1_arbitrum_deployToken.js --network arbitrum
-npx hardhat run scripts/arbitrum/2_arbitrum_deployTimeLock.js --network arbitrum
-npx hardhat run scripts/arbitrum/3_arbitrum_deployGovernor.js --network arbitrum
 npx hardhat run scripts/arbitrum/4_arbitrum_deploySteleAndNFT.js --network arbitrum
 ```
 
